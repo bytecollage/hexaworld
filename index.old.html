@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa hexagonal</title>
+<style>
+  :root {
+    --bg: #15181d; --panel: #1f242b; --borde: #333a44; --txt: #e6e8eb; --sub: #8b949e; --acento: #e3b341;
+    --agua: #3b7fc4; --arena: #dcc27e; --hierba: #5c9e4a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--txt);
+         font: 14px/1.4 system-ui, -apple-system, sans-serif; user-select: none; }
+
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 10px 18px;
+           background: var(--panel); border-bottom: 1px solid var(--borde); position: relative; z-index: 2; }
+  h1 { margin: 0; font-size: 16px; font-weight: 600; margin-right: auto; }
+  .grupo { display: flex; align-items: center; gap: 8px; }
+  .grupo > .titulo { color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stepper { display: flex; align-items: center; border: 1px solid var(--borde); border-radius: 6px; overflow: hidden; }
+  .stepper button { width: 28px; height: 28px; border: 0; background: #2a313a; color: var(--txt); font-size: 17px; cursor: pointer; }
+  .stepper button:hover:not(:disabled) { background: #36404b; }
+  .stepper button:disabled { opacity: .35; cursor: default; }
+  .stepper output { min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .etq { color: var(--sub); }
+  input[type=range] { width: 90px; accent-color: var(--acento); }
+  .boton, .herr { height: 28px; padding: 0 10px; border: 1px solid var(--borde); border-radius: 6px;
+                  background: #2a313a; color: var(--txt); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .boton:hover, .herr:hover { background: #36404b; }
+  .herr.activa { border-color: var(--acento); box-shadow: inset 0 0 0 1px var(--acento); }
+  .muestra { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* ---- escena 3D ---- */
+  main { flex: 1; min-height: 0; position: relative; overflow: hidden; perspective: 1100px;
+         background: radial-gradient(ellipse at 50% 30%, #222831, #101317); cursor: grab; touch-action: none; }
+  main.arrastrando { cursor: grabbing; }
+  main.pintando { cursor: crosshair; }
+  .mesa { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
+  .mesa svg { display: block; overflow: visible; filter: drop-shadow(0 18px 18px rgba(0,0,0,.45)); }
+  .hex { stroke: rgba(0,0,0,.28); stroke-width: 1.5; }
+  .hex:hover { stroke: #fff; stroke-width: 3; }
+
+  .brujula { position: absolute; right: 16px; bottom: 16px; width: 54px; height: 54px; border-radius: 50%;
+             background: rgba(31,36,43,.85); border: 1px solid var(--borde); display: grid; place-items: center;
+             cursor: pointer; z-index: 2; }
+  .brujula svg { width: 40px; height: 40px; }
+
+  footer { padding: 7px 18px; color: var(--sub); font-size: 12px; border-top: 1px solid var(--borde);
+           display: flex; flex-wrap: wrap; gap: 6px 20px; justify-content: space-between; }
+  .leyenda { display: flex; gap: 14px; }
+  .leyenda span { display: inline-flex; align-items: center; gap: 5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mapa hexagonal</h1>
+
+  <div class="grupo">
+    <span class="titulo">Tamaño</span>
+    <span class="etq">Col</span>
+    <div class="stepper">
+      <button data-campo="cols" data-delta="-1" aria-label="Menos columnas">−</button>
+      <output id="cols">10</output>
+      <button data-campo="cols" data-delta="1" aria-label="Más columnas">+</button>
+    </div>
+    <span class="etq">Fil</span>
+    <div class="stepper">
+      <button data-campo="filas" data-delta="-1" aria-label="Menos filas">−</button>
+      <output id="filas">10</output>
+      <button data-campo="filas" data-delta="1" aria-label="Más filas">+</button>
+    </div>
+    <div class="stepper">
+      <button data-campo="ambos" data-delta="-1" aria-label="Reducir ambos">−</button>
+      <button data-campo="ambos" data-delta="1" aria-label="Ampliar ambos">+</button>
+    </div>
+  </div>
+
+  <div class="grupo">
+    <span class="titulo">Vista</span>
+    <label class="etq" for="incl">Inclinación</label>
+    <input type="range" id="incl" min="0" max="75" value="55">
+    <label class="etq" for="rot">Giro</label>
+    <input type="range" id="rot" min="-180" max="180" value="0">
+    <button class="boton" id="encuadrar" title="Centrar y ajustar (tecla 0)">Encuadrar</button>
+  </div>
+
+  <div class="grupo" id="herramientas">
+    <span class="titulo">Terreno</span>
+    <button class="herr activa" data-herr="mover" title="Mover (M)">✋ Mover</button>
+    <button class="herr" data-herr="agua" title="Pintar agua (1)"><span class="muestra" style="background:var(--agua)"></span>Agua</button>
+    <button class="herr" data-herr="arena" title="Pintar arena (2)"><span class="muestra" style="background:var(--arena)"></span>Arena</button>
+    <button class="herr" data-herr="hierba" title="Pintar hierba (3)"><span class="muestra" style="background:var(--hierba)"></span>Hierba</button>
+    <button class="boton" id="nuevo" title="Generar otro mapa al azar">🎲 Nuevo mapa</button>
+  </div>
+</header>
+
+<main id="escena">
+  <div class="mesa" id="mesa"><svg id="tablero" role="img" aria-label="Mapa de hexágonos"></svg></div>
+  <div class="brujula" id="brujula" title="Orientar al norte">
+    <svg viewBox="-20 -20 40 40" id="aguja"><polygon points="0,-16 5,0 -5,0" fill="#e5534b"/><polygon points="0,16 5,0 -5,0" fill="#c9d1d9"/><text y="-17" font-size="7" text-anchor="middle" fill="#e6e8eb" dy="-1">N</text></svg>
+  </div>
+</main>
+
+<footer>
+  <span id="info">Arrastra para mover · rueda para zoom · elige un pincel y pinta</span>
+  <span class="leyenda" id="leyenda"></span>
+  <span>WASD/flechas: mover · Q/E: girar · R/F: inclinar · +/−: zoom · 0: encuadrar · Espacio+arrastrar: mover al pintar</span>
+</footer>
+
+<script>
+// ---------------------------------------------------------------- configuración
+const MIN = 1, MAX = 40;
+const R = 30;                       // radio del hexágono (centro a vértice)
+const ANCHO = Math.sqrt(3) * R;     // hexágonos "punta arriba"
+const ALTO_FILA = 1.5 * R;
+const TERRENOS = {
+  agua:   { nombre: "Agua",   color: [59, 127, 196] },
+  arena:  { nombre: "Arena",  color: [220, 194, 126] },
+  hierba: { nombre: "Hierba", color: [92, 158, 74] },
+};
+
+const estado = {
+  cols: 10, filas: 10,
+  semilla: Math.floor(Math.random() * 1e9),
+  pintadas: new Map(),            // "f,c" -> terreno pintado a mano (prevalece sobre el generado)
+  herramienta: "mover",
+};
+const vista = { incl: 55, rot: 0, zoom: 1, px: 0, py: 0 };  // px/py: desplazamiento sobre el plano del mapa
+
+const $ = id => document.getElementById(id);
+const svg = $("tablero"), mesa = $("mesa"), escena = $("escena");
+
+// ---------------------------------------------------------------- terreno procedural (ruido de valor)
+function hash(x, y) {
+  let h = (x * 374761393 + y * 668265263 + estado.semilla * 2147483647) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function ruido(x, y) {
+  const x0 = Math.floor(x), y0 = Math.floor(y), tx = x - x0, ty = y - y0;
+  const s = t => t * t * (3 - 2 * t);
+  const a = hash(x0, y0), b = hash(x0 + 1, y0), c = hash(x0, y0 + 1), d = hash(x0 + 1, y0 + 1);
+  return a + (b - a) * s(tx) + (c - a) * s(ty) + (a - b - c + d) * s(tx) * s(ty);
+}
+function altura(f, c) {
+  const x = c + (f % 2) * 0.5, y = f * 0.866;  // posición real del centro (en anchos de hexágono)
+  return 0.65 * ruido(x * 0.3, y * 0.3) + 0.35 * ruido(x * 0.7 + 50, y * 0.7 + 50);
+}
+function terrenoGenerado(h) { return h < 0.44 ? "agua" : h < 0.52 ? "arena" : "hierba"; }
+function terreno(f, c) { return estado.pintadas.get(`${f},${c}`) ?? terrenoGenerado(altura(f, c)); }
+
+function colorDe(f, c) {
+  // variación sutil de tono por casilla para que el mapa no se vea plano
+  const tipo = terreno(f, c), [r, g, b] = TERRENOS[tipo].color;
+  const v = (altura(f, c) - 0.5) * (tipo === "agua" ? 70 : 40) + (hash(f * 7, c * 13) - 0.5) * 10;
+  const k = n => Math.max(0, Math.min(255, Math.round(n + v)));
+  return `rgb(${k(r)},${k(g)},${k(b)})`;
+}
+
+// ---------------------------------------------------------------- dibujo
+function vertices(cx, cy) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i - 30);
+    pts.push(`${(cx + R * Math.cos(a)).toFixed(2)},${(cy + R * Math.sin(a)).toFixed(2)}`);
+  }
+  return pts.join(" ");
+}
+
+function dimensiones() {
+  return { w: ANCHO * (estado.cols + (estado.filas > 1 ? 0.5 : 0)), h: 2 * R + ALTO_FILA * (estado.filas - 1) };
+}
+
+function dibujar() {
+  const { cols, filas } = estado;
+  const frag = document.createDocumentFragment();
+  for (let f = 0; f < filas; f++) {
+    for (let c = 0; c < cols; c++) {
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      p.setAttribute("points", vertices(ANCHO * (c + 0.5 + (f % 2) * 0.5), R + ALTO_FILA * f));
+      p.setAttribute("class", "hex");
+      p.setAttribute("fill", colorDe(f, c));
+      p.dataset.f = f; p.dataset.c = c;
+      frag.appendChild(p);
+    }
+  }
+  svg.replaceChildren(frag);
+  const { w, h } = dimensiones();
+  svg.setAttribute("width", w); svg.setAttribute("height", h);
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+
+  $("cols").textContent = cols; $("filas").textContent = filas;
+  for (const b of document.querySelectorAll(".stepper button")) {
+    const d = +b.dataset.delta, campo = b.dataset.campo;
+    const valores = campo === "ambos" ? [cols, filas] : [estado[campo]];
+    b.disabled = valores.every(v => v + d < MIN || v + d > MAX);
+  }
+  aplicarVista();
+  actualizarLeyenda();
+}
+
+function actualizarLeyenda() {
+  const n = { agua: 0, arena: 0, hierba: 0 };
+  for (let f = 0; f < estado.filas; f++) for (let c = 0; c < estado.cols; c++) n[terreno(f, c)]++;
+  $("leyenda").innerHTML = Object.entries(TERRENOS).map(([k, t]) =>
+    `<span><span class="muestra" style="background:var(--${k})"></span>${t.nombre} ${n[k]}</span>`).join("");
+}
+
+// ---------------------------------------------------------------- vista 3D (pan / inclinación / giro / zoom)
+function aplicarVista() {
+  const { w, h } = dimensiones();
+  // Orden (de derecha a izquierda): desplazar sobre el plano -> escalar -> girar -> inclinar -> centrar
+  mesa.style.width = w + "px"; mesa.style.height = h + "px";
+  mesa.style.transformOrigin = "center";
+  mesa.style.transform =
+    `translate(-50%, -50%) rotateX(${vista.incl}deg) rotateZ(${vista.rot}deg) scale(${vista.zoom}) translate(${vista.px}px, ${vista.py}px)`;
+  $("incl").value = vista.incl; $("rot").value = vista.rot;
+  $("aguja").style.transform = `rotate(${vista.rot}deg)`;
+}
+
+function encuadrar() {
+  // Mide el tamaño real en pantalla (con perspectiva) y ajusta el zoom hasta que quepa con margen
+  vista.px = vista.py = 0;
+  vista.zoom = 1;
+  for (let i = 0; i < 4; i++) {
+    aplicarVista();
+    const caja = svg.getBoundingClientRect(), esc = escena.getBoundingClientRect();
+    const factor = Math.min(esc.width * 0.9 / caja.width, esc.height * 0.88 / caja.height);
+    vista.zoom = Math.min(vista.zoom * factor, 4);
+  }
+  aplicarVista();
+  // centra verticalmente lo que se ve (la perspectiva desplaza el tablero hacia abajo)
+  const caja = svg.getBoundingClientRect(), esc = escena.getBoundingClientRect();
+  moverPantalla(0, (esc.top + esc.height / 2) - (caja.top + caja.height / 2));
+}
+
+// Convierte un movimiento en pantalla (dx, dy) en desplazamiento sobre el plano del mapa
+function moverPantalla(dx, dy) {
+  const incl = vista.incl * Math.PI / 180, rot = vista.rot * Math.PI / 180;
+  const gx = dx, gy = dy / Math.max(Math.cos(incl), 0.25);           // deshace la inclinación
+  const lx = gx * Math.cos(rot) + gy * Math.sin(rot);                // deshace el giro
+  const ly = -gx * Math.sin(rot) + gy * Math.cos(rot);
+  vista.px += lx / vista.zoom; vista.py += ly / vista.zoom;
+  aplicarVista();
+}
+
+function zoom(factor) {
+  vista.zoom = Math.min(8, Math.max(0.15, vista.zoom * factor));
+  aplicarVista();
+}
+
+// ---------------------------------------------------------------- interacción
+let arrastre = null, pintando = false, espacio = false;
+
+function pintar(p) {
+  if (!p || !p.classList.contains("hex")) return;
+  const f = +p.dataset.f, c = +p.dataset.c, tipo = estado.herramienta;
+  if (terreno(f, c) === tipo) return;
+  estado.pintadas.set(`${f},${c}`, tipo);
+  p.setAttribute("fill", colorDe(f, c));
+  actualizarLeyenda();
+}
+
+escena.addEventListener("pointerdown", e => {
+  const moverModo = estado.herramienta === "mover" || e.button !== 0 || espacio;
+  if (moverModo) {
+    arrastre = { x: e.clientX, y: e.clientY };
+    escena.setPointerCapture(e.pointerId);
+    escena.classList.add("arrastrando");
+  } else {
+    pintando = true;
+    pintar(e.target);
+  }
+});
+escena.addEventListener("pointermove", e => {
+  if (arrastre) {
+    moverPantalla(e.clientX - arrastre.x, e.clientY - arrastre.y);
+    arrastre = { x: e.clientX, y: e.clientY };
+  } else if (pintando) {
+    pintar(document.elementFromPoint(e.clientX, e.clientY));
+  }
+});
+const soltar = () => { arrastre = null; pintando = false; escena.classList.remove("arrastrando"); };
+escena.addEventListener("pointerup", soltar);
+escena.addEventListener("pointercancel", soltar);
+escena.addEventListener("contextmenu", e => e.preventDefault());
+escena.addEventListener("wheel", e => { e.preventDefault(); zoom(Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+
+svg.addEventListener("mouseover", e => {
+  const p = e.target.closest(".hex");
+  if (p) $("info").textContent =
+    `Fila ${+p.dataset.f + 1}, columna ${+p.dataset.c + 1} · ${TERRENOS[terreno(+p.dataset.f, +p.dataset.c)].nombre}`;
+});
+
+function elegirHerramienta(h) {
+  estado.herramienta = h;
+  for (const b of document.querySelectorAll(".herr")) b.classList.toggle("activa", b.dataset.herr === h);
+  escena.classList.toggle("pintando", h !== "mover");
+}
+$("herramientas").addEventListener("click", e => {
+  const b = e.target.closest(".herr");
+  if (b) elegirHerramienta(b.dataset.herr);
+});
+
+function cambiarTamano(campo, delta) {
+  const ajustar = k => { estado[k] = Math.min(MAX, Math.max(MIN, estado[k] + delta)); };
+  if (campo === "ambos") { ajustar("cols"); ajustar("filas"); } else ajustar(campo);
+  for (const k of estado.pintadas.keys()) {
+    const [f, c] = k.split(",").map(Number);
+    if (f >= estado.filas || c >= estado.cols) estado.pintadas.delete(k);
+  }
+  dibujar();
+}
+document.querySelector("header").addEventListener("click", e => {
+  const b = e.target.closest("button[data-campo]");
+  if (b) cambiarTamano(b.dataset.campo, +b.dataset.delta);
+});
+
+$("incl").addEventListener("input", e => { vista.incl = +e.target.value; aplicarVista(); });
+$("rot").addEventListener("input", e => { vista.rot = +e.target.value; aplicarVista(); });
+$("encuadrar").onclick = encuadrar;
+$("brujula").onclick = () => { vista.rot = 0; aplicarVista(); };
+$("nuevo").onclick = () => { estado.semilla = Math.floor(Math.random() * 1e9); estado.pintadas.clear(); dibujar(); };
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const paso = 40, k = e.key.toLowerCase();
+  const acciones = {
+    w: () => moverPantalla(0, paso), arrowup: () => moverPantalla(0, paso),
+    s: () => moverPantalla(0, -paso), arrowdown: () => moverPantalla(0, -paso),
+    a: () => moverPantalla(paso, 0), arrowleft: () => moverPantalla(paso, 0),
+    d: () => moverPantalla(-paso, 0), arrowright: () => moverPantalla(-paso, 0),
+    q: () => { vista.rot = ((vista.rot - 5 + 540) % 360) - 180; aplicarVista(); },
+    e: () => { vista.rot = ((vista.rot + 5 + 540) % 360) - 180; aplicarVista(); },
+    r: () => { vista.incl = Math.min(75, vista.incl + 5); aplicarVista(); },
+    f: () => { vista.incl = Math.max(0, vista.incl - 5); aplicarVista(); },
+    "+": () => zoom(1.15), "=": () => zoom(1.15), "-": () => zoom(1 / 1.15),
+    "0": encuadrar, m: () => elegirHerramienta("mover"),
+    "1": () => elegirHerramienta("agua"), "2": () => elegirHerramienta("arena"), "3": () => elegirHerramienta("hierba"),
+    " ": () => { espacio = true; },
+  };
+  if (acciones[k]) { e.preventDefault(); acciones[k](); }
+});
+document.addEventListener("keyup", e => { if (e.key === " ") espacio = false; });
+window.addEventListener("resize", aplicarVista);
+
+dibujar();
+encuadrar();
+</script>
+</body>
+</html>

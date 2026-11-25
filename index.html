@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wrapping hex world</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+
+<main>
+  <canvas id="view"></canvas>
+  <div class="clock" id="clockBox"><canvas id="clock" width="236" height="236"></canvas>
+    <div class="medal" id="compass" title="Compass · click: point north">
+      <svg viewBox="-20 -20 40 40" id="needle"><polygon points="0,-15 4.5,0 -4.5,0" fill="#e5534b"/><polygon points="0,15 4.5,0 -4.5,0" fill="#f1e6c8"/>
+        <circle r="2" fill="#2b1a0c"/></svg>
+    </div>
+    <div class="medal" id="locateButton" title="Find the character (C)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="#f1e2bb" stroke-width="2"/>
+        <path d="M12 2 V7 M12 17 V22 M2 12 H7 M17 12 H22" stroke="#f1e2bb" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6" fill="#e5534b"/></svg>
+    </div>
+    <div class="medal" id="mapButton" title="Map (M)">
+      <svg viewBox="0 0 24 24"><path d="M3 6 L8.5 4 L15.5 6 L21 4 L21 18 L15.5 20 L8.5 18 L3 20 Z" fill="#f1e2bb" stroke="#2b1a0c" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M8.5 4 V18 M15.5 6 V20" stroke="#8a6a3c" stroke-width="1"/><path d="M5 12 Q8 9 11 12 T18 11" fill="none" stroke="#3f7a3a" stroke-width="1.3"/>
+        <circle cx="16.5" cy="9" r="1.3" fill="#c0392b"/></svg>
+    </div>
+  </div>
+  <div class="notice" id="notice"></div>
+  <div class="workshop" id="workshop"></div>
+  <div class="panel-cage" id="cagePanel"></div>
+  <div class="containers" id="containers"></div>
+  <div class="sleeping" id="sleeping">💤 Sleeping in the house… the night goes by quickly</div>
+  <div class="death" id="death"><div class="box-death"><b>You died</b><p id="deathText"></p>
+    <button class="btn" id="restartGame">Start again</button></div></div>
+  <div class="population" id="population">
+    <div class="head"><b>Population</b><span id="populationDay"></span><span class="hint">P to close</span></div>
+    <canvas id="populationChart"></canvas>
+  </div>
+  <div class="fps" id="fps" hidden></div>
+  <div class="options" id="options">
+    <div class="head"><b>Options</b><span class="hint">O to close</span></div>
+    <div class="group">
+      <span class="heading">World</span>
+      <span class="lbl">Radius</span>
+      <div class="stepper">
+        <button data-delta="-25" aria-label="Radius −25">−25</button>
+        <button data-delta="-5" aria-label="Radius −5">−</button>
+        <output id="radius">200</output>
+        <button data-delta="5" aria-label="Radius +5">+</button>
+        <button data-delta="25" aria-label="Radius +25">+25</button>
+      </div>
+      <span class="lbl" id="cellCount"></span>
+      <button class="btn" id="newWorld">🎲 New world</button>
+      <label class="chk" title="For testing: gathering, crafting, building, chopping and every other job finish instantly"><input type="checkbox" id="fast"> Fast</label>
+      <button class="btn" id="testMap" title="Small map (radius 60) with a single tall grass tuft and 10 deer; the inventory is filled with 500 of each natural resource">🧪 Test map</button>
+    </div>
+
+    <div class="group">
+      <span class="heading">View</span>
+      <label class="lbl" for="tilt">Tilt</label>
+      <input type="range" id="tilt" min="0" max="72" value="55">
+      <label class="lbl" for="rot">Turn</label>
+      <input type="range" id="rot" min="-180" max="180" value="0">
+      <label class="chk" title="Key V"><input type="checkbox" id="elements" checked> Elements</label>
+      <label class="chk" title="Key B"><input type="checkbox" id="edge"> Edges</label>
+      <label class="chk" title="The camera follows the character (C or the target icon: back to the character)"><input type="checkbox" id="follow" checked> Follow</label>
+      <label class="chk" title="Unchecked: walks from cell center to cell center"><input type="checkbox" id="straightLine" checked> Straight line</label>
+      <label class="chk" title="Shows frames per second and the time each frame takes (top right)"><input type="checkbox" id="showFps"> FPS</label>
+    </div>
+
+    <div class="group" id="tools">
+      <span class="heading">Terrain</span>
+      <button class="tool active" data-tool="move" title="Move (Shift+0)">✋ Move</button>
+      <button class="tool" data-tool="deep" title="Ocean (Shift+1)"><span class="swatch" style="background:var(--deep)"></span>Ocean</button>
+      <button class="tool" data-tool="medium" title="Medium depth (Shift+2)"><span class="swatch" style="background:var(--medium)"></span>Medium</button>
+      <button class="tool" data-tool="water" title="Shallow water: wadeable (Shift+3)"><span class="swatch" style="background:var(--water)"></span>Shallow</button>
+      <button class="tool" data-tool="sand" title="Sand (Shift+4)"><span class="swatch" style="background:var(--sand)"></span>Sand</button>
+      <button class="tool" data-tool="grass" title="Grass (Shift+5)"><span class="swatch" style="background:var(--grass)"></span>Grass</button>
+    </div>
+
+    <div class="group" id="speedControl" title="Speed up time for testing (at ×1 a day lasts 6 minutes)">
+      <span class="heading">Time</span>
+      <button class="tool active" data-speed="1">▶ ×1</button>
+      <button class="tool" data-speed="5">×5</button>
+      <button class="tool" data-speed="20">×20</button>
+      <button class="tool" data-speed="60">×60</button>
+      <button class="tool" data-speed="240">×240</button>
+      <button class="tool" id="nextDay" title="The world runs until the next dawn">⏭ Next day</button>
+    </div>
+  </div>
+  <div class="parchment" id="minimap">
+    <div class="heading-map">Map of the valley</div>
+    <canvas id="mini"></canvas>
+    <div class="foot-map">Click: go there · M to close</div>
+  </div>
+</main>
+
+<footer class="inventory" id="inventory"
+        title="Click: walk · drag/WASD: move view · right click+drag: turn/tilt · right click: drop what is in the hand · wheel: zoom · M: map · C: find the character · O: options · P: population · V: elements · Shift+0: move · Shift+1-5: brushes"></footer>
+
+<script src="src/core/hex.js"></script>
+<script src="src/core/dom.js"></script>
+<script src="src/registry/registry.js"></script>
+<script src="src/world/world.js"></script>
+<script src="src/core/random.js"></script>
+<script src="src/world/terrain.js"></script>
+<script src="src/core/graph.js"></script>
+<script src="src/world/generator.js"></script>
+<script src="src/player/inventory.js"></script>
+<script src="src/ui/inventoryUI.js"></script>
+<script src="src/ui/containers.js"></script>
+<script src="src/player/gathering.js"></script>
+<script src="src/ui/notice.js"></script>
+<script src="src/world/outcrops.js"></script>
+<script src="src/world/cells.js"></script>
+<script src="src/world/placement.js"></script>
+<script src="src/sim/flora.js"></script>
+<script src="src/sim/food.js"></script>
+<script src="src/sim/species.js"></script>
+<script src="src/sim/spawnFauna.js"></script>
+<script src="src/sim/herbivores.js"></script>
+<script src="src/sim/needs.js"></script>
+<script src="src/sim/fauna.js"></script>
+<script src="src/sim/animals.js"></script>
+<script src="src/sim/predators.js"></script>
+<script src="src/sim/population.js"></script>
+<script src="src/ui/populationChart.js"></script>
+<script src="src/sim/simulate.js"></script>
+<script src="src/player/crafting.js"></script>
+<script src="src/player/tools.js"></script>
+<script src="src/player/actions.js"></script>
+<script src="src/player/work.js"></script>
+<script src="src/player/capture.js"></script>
+<script src="src/player/building.js"></script>
+<script src="src/render/night.js"></script>
+<script src="src/render/clouds.js"></script>
+<script src="src/ui/workshop.js"></script>
+<script src="src/render/camera.js"></script>
+<script src="src/render/scene.js"></script>
+<script src="src/render/primitives.js"></script>
+<script src="src/render/characterDraw.js"></script>
+<script src="src/ui/minimap.js"></script>
+<script src="src/player/character.js"></script>
+<script src="src/world/time.js"></script>
+<script src="src/player/durability.js"></script>
+<script src="src/ui/clock.js"></script>
+<script src="src/loop.js"></script>
+<script src="src/ui/input.js"></script>
+<script src="content/registry.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>

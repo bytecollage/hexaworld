@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# temporary pages written by the headless test tools
+.t-page*.html
+.smoke-*.html
+.gallery-*.html
+.fp-*.html
+
+# local tool output
+*.log
