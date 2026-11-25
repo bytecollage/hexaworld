@@ -1,4 +1,4 @@
-# hexagonos — notes for Claude
+# hexaworld — notes for Claude
 
 - Static page opened by double-click (`file://`): no server, no build step, no backend, no ES modules (classic `<script>` files only).
 - Absolutely everything in English: identifiers, comments, data ids, DOM ids, CSS classes, UI text and docs.

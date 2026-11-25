@@ -1,4 +1,4 @@
-# Architecture — hexagonos
+# Architecture — hexaworld
 
 How the code is organized and how to change it. For the game rules, see [BEHAVIOR.md](BEHAVIOR.md).
 

@@ -1,4 +1,4 @@
-# World behavior — `index.html`
+# Game behavior — hexaworld
 
 Living document: it describes the game rules as they are implemented. **Update it with every change.**
 For how the code is organized (and how to add or remove a species or plant), see [ARCHITECTURE.md](ARCHITECTURE.md).
