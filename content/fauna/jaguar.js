@@ -14,6 +14,17 @@ defineFauna({
     hungryBig: true,                                // it only attacks healthy deer and peccaries when very hungry
     threatensPlayer: "stalk",                       // in the dark it stalks, charges and kills the character
   },
+  nearPlayer: {                                     // in daylight: it watches the character and slinks off if it comes too close
+    retreat: 2.5, watch: 6, pace: 0.6,
+    says: ["A jaguar is watching me…", "Those yellow eyes are following me", "A jaguar stares at me from the trees"],
+  },
+  chasesOff: { ids: new Set(["fox"]), radius: 3 },  // it charges foxes that come near, and they run
+  provoke: {                                        // walking up to it 3 times in a day: it attacks, by day too
+    radius: 4, times: 3, charge: 4,
+    warn: ["The jaguar growls at me. I had better leave it alone", "It bares its teeth… one more time and it will come for me"],
+    attacks: ["The jaguar is charging at me!", "I bothered the jaguar too much: it is coming!"],
+    kills: "You bothered the jaguar too often: it attacked you.",
+  },
   breed: { seasons: [0], pct: 0.5, litter: [1, 2], food: true, cap: 1 },   // territorial: no more than at the start
   spawn: {                                          // adults in forests: 1 per 20 deer (min. 2)
     phase: 150, normalOnly: true,

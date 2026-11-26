@@ -14,6 +14,7 @@ defineFauna({
     findsHidden: true,                              // the only one that finds small mammals hidden among the pines
     fallbackFood: "fruit",                          // with no preys it eats fallen fruit
   },
+  nearPlayer: { retreat: 3, pace: 0.8 },           // not afraid of the character, but it trots out of its way
   breed: { seasons: [0], pct: 0.6, litter: [2, 4], food: true, cap: 1.5 },
   spawn: {                                          // adults in a burrow at the forest edge: 1 per 25 small preys (min. 4)
     phase: 160, normalOnly: true,

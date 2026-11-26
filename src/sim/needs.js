@@ -56,7 +56,8 @@ function updateWithNeeds(a, dt) {           // returns true if it already took c
                          : !shelterTime() ? [1, 1] : sheltering ? [1.8, 1.8] : [0.15, 0.5];
   const thirst = a.thirst >= uThirst, hunger = a.hunger >= uHunger, needsItem = thirst || hunger;
   if (a.goal?.type === "shelter" && needsItem && !a.goal.runs) a.goal = null;   // thirst or hunger rule (unless fleeing)
-  if (!a.goal && needsItem && a.retry <= 0) {
+  const hiding = afraid(a) && a.inShelter && a.thirst < PRESSING && a.hunger < PRESSING;   // scared: it stays hidden a while
+  if (!a.goal && needsItem && a.retry <= 0 && !hiding) {
     a.inShelter = false; a.shelter = -1;
     planTrip(a, thirst && (!hunger || a.thirst >= a.hunger) ? "drink" : "eat");
   }

@@ -119,11 +119,13 @@ footer.inventory .slotList { display: flex; gap: 8px; }
 .dropdown { position: absolute; left: 62px; top: 50%; transform: translateY(-50%); display: flex; gap: 6px; padding: 5px;
                border-radius: 10px; background: rgba(21,24,29,.85); border: 1px solid var(--edge); }
 .slot.group, .slot.recipe { width: 52px; height: 52px; font-size: 26px; cursor: pointer; color: var(--txt); padding: 0; }
-.slot.group { opacity: .55; }
-.slot.group.ready { opacity: 1; border-color: var(--accent); }
-.slot.group.expanded { box-shadow: inset 0 0 0 2px var(--accent); opacity: 1; }
-.slot.recipe { filter: grayscale(1); opacity: .42; }
-.slot.recipe.ready { filter: none; opacity: 1; border-color: var(--accent); }
+.workshop.empty { display: none; }                      /* nothing to show yet: no ladder */
+/* not available: only the icon fades (the slot stays opaque, so the rope does not show through it) */
+.slot.group > *, .slot.recipe > * { opacity: .45; filter: grayscale(1); }
+.slot.group.ready > *, .slot.group.expanded > *, .slot.recipe.ready > * { opacity: 1; filter: none; }
+.slot.group.ready { border-color: var(--accent); }
+.slot.group.expanded { box-shadow: inset 0 0 0 2px var(--accent); }
+.slot.recipe.ready { border-color: var(--accent); }
 .slot.recipe.building { box-shadow: inset 0 0 0 2px #7fd47f; border-color: #7fd47f; }
 .slot.group:hover, .slot.recipe.ready:hover { background: linear-gradient(#323a44, #232a32); }
 .slot { position: relative; width: 54px; height: 54px; border-radius: 9px; border: 1px solid var(--edge);
@@ -177,3 +179,12 @@ footer.inventory .slotList { display: flex; gap: 8px; }
 #inventory .basketButton.open { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 #inventory .basketButton[hidden] { display: none; }
 canvas.clickable { cursor: pointer; }   /* over a house or a chest */
+
+/* loading screen: covers everything until the first frame is drawn, and while a new world is generated */
+.loading { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+           background: radial-gradient(circle at 50% 45%, #22301f, var(--bg) 70%); transition: opacity .45s ease; }
+.loading.done { opacity: 0; pointer-events: none; }
+.loadingBox { display: flex; flex-direction: column; align-items: center; gap: 18px; color: #f1e2bb; font-size: 18px; letter-spacing: .06em; }
+.loadingHex { width: 54px; height: 62px; background: var(--grass); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+              animation: loadingSpin 1.4s cubic-bezier(.5,.1,.5,.9) infinite; box-shadow: inset 0 0 0 4px #3f7a3a; }
+@keyframes loadingSpin { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(180deg) scale(.82); background: var(--water); } 100% { transform: rotate(360deg) scale(1); } }

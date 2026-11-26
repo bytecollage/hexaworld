@@ -24,7 +24,7 @@ src/
   player/             inventory, gathering, crafting and fire, tools, click actions, jobs, capture, building,
                       character movement
   render/             camera, scene (ground + depth-sorted elements), drawing primitives, night, clouds (zoom < 30), character drawing
-  ui/                 inventory UI, containers (house/chest/basket rows above the inventory), workshop, minimap, clock, population chart, notices, input
+  ui/                 inventory UI, containers (house/chest/basket rows above the inventory), workshop, minimap, clock, population chart, notices, loading screen, input
   loop.js             the frame loop
   main.js             boot
 content/
@@ -47,7 +47,9 @@ index.old.html        the earlier hex-map prototype (reference)
 2. `content/registry.js` runs next. It writes one `<script>` tag per content file with `document.write`, so the
    content files run in list order **before** `main.js`. This works on `file://`.
 3. `main.js` calls `finalizeRegistry()`, which fills the engine's lookup tables from the definitions, and then
-   generates the first world and starts `loop()`.
+   generates the first world and starts `loop()`. After the first frame it hides the loading screen (`hideLoading()`,
+   src/ui/loading.js) and drops the workshop ladder. Regenerating a world goes through `withLoading(text, fn)`, which
+   shows the screen and lets the browser paint it before the synchronous `generate()` runs.
 
 Content files only *declare* things. Engine code reads definitions at run time, never while loading, so content
 can use any engine helper (`landZone`, `sizeOf`, `ctx`, `project`, …) inside its functions.
@@ -169,8 +171,11 @@ Every species, plant, item, world feature and structure is **one file** that cal
 | `life: { min, max }`, `grows: { min, days }` | Lifespan in days; size at birth and age when fully grown. |
 | `breed: { seasons, pct, litter, food, cap, nest, spawning, maturity }` | Breeding: seasons (0-3), share of pairs, litter size, only when well fed, carrying capacity × initial population, lays a nest (turtle), spawns in shallow water (fish). |
 | `alert`, `fleeing`, `defense` | Distance at which it notices a hunting predator; distance at which it flees from the character; catch-probability factor (armadillo 0.5). |
-| `needs: { thirst, hunger, dies, diet, hungryDiet, hidden, house, fleeing }` | Animals that eat and drink in the game: days until thirsty/hungry, days to starve, what they eat (ids of plants and items with `food`), what they eat when very hungry, hides in forests, lives in a burrow. A diet `Set` with `takesBait: true` is attracted by trap bait. |
+| `needs: { thirst, hunger, dies, diet, hungryDiet, hidden, house, fleeing }` | Animals that eat and drink in the game: days until thirsty/hungry, days to starve, what they eat (ids of plants and items with `food`), what they eat when very hungry, hides in forests, lives in a burrow, distance at which the character makes them wary (`reactToPlayer`, src/sim/herbivores.js: they run only within half of it; otherwise trips are re-planned around the character with `avoidingPlayer`, which every `planTrip` route uses). After fleeing from a predator (`fleeFrom`, `fleeToOtherForest`) the animal keeps `a.fear` (where, until when): `avoidingFear` takes that spot out of its routes, it stays in its shelter while afraid unless thirst or hunger reach `PRESSING`, and a desperate animal only flees from a predator that is chasing something (`threatNearby`). A diet `Set` with `takesBait: true` is attracted by trap bait. |
 | `hunt: { preys, cycle, dies, active, mode, view, attack, huntSpeed, success, restTime, chaseTime, radius, sates, stealth, reach, onlyWeak, onlyShore, attackRadius, hungryBig, threatensPlayer, findsHidden, fishInShallowOnly, fallbackFood }` | Predators. `mode`: `chase` \| `ambusher` \| `scavenger`. `active`: `day` \| `night` \| `always`. `threatensPlayer`: `stalk` (jaguar) \| `shore` (caiman). `huntsFrom`: hunger at which it starts hunting (default 1). `soar`: radius of its circles over home (birds). `perch`: altitude when resting at home at night (0: on the ground). `view` is also the vulture's search radius. |
+| `nearPlayer: { retreat, watch, pace, says }` | Predators that are not hunting: closer than `retreat` reference cells they trot off (`pace` × speed); closer than `watch`, when not hungry, they stand still facing the character (`says`: notice lines). Fox and jaguar. |
+| `provoke: { radius, times, charge, reach, warn, attacks, kills }` | Predators: each time the character walks toward it and gets within `radius` reference cells counts as an approach (again only after leaving 1.3 × radius or after it slinks off, and at least `APPROACH_GAP` seconds apart); `reach`: biting distance while charging (caiman, from the edge of its terrain); the one before the last of the same day warns, the last makes it charge at `charge` × speed for 10 s, by day too, killing the character on contact (`provoked()`, crafting.js). Jaguar, caiman. |
+| `chasesOff: { ids, radius }` | Predators: a rival of those species within `radius` gets a short charge and runs away (`a.evade`). Jaguar → fox. |
 | `hide`, `bones` | Hides and bones given (with the meat) when it is cut with the knife. |
 | `meat`, `live: { icon, name, diet }`, `grab: { meat(a) }` | Meat when cut (default 1); live captive (icon, inventory name, diet in a cage); caught by hand as meat (frog, turtle). |
 | `bigCarcass`, `leavesCarcass` | Its carcass grows more plants; a predator that leaves a carcass (others vanish). |
@@ -255,6 +260,7 @@ Delete (or comment out) its line in `content/registry.js`. The engine skips unre
 These are deliberate. They are core game mechanics, not species.
 
 - **Core resources of the player's crafting and tools.** Recipes and actions use `branches`, `stones`, `grass`, `berries`, `fruit`, `coconut`, `pineCone`, `hide`, `bones` and the crafts (`rope`, `sharpStone`, `sharpBone`, `tannedHide`, `resin`) by id (recipes, bait, stoking the bonfire, throwing stones). A recipe with `needsFire: true` is made only next to a burning campfire or bonfire.
+- **Skills:** a recipe (`RECIPES`, crafting.js) or build (`BUILDS`, building.js) may have `requires: [ids]` (things that must have been made before: the `known` set) and `tools: [ids]` (one of them carried, not used up). `canMake`/`canBuild` check them; `cannotMake(r)` gives the reason in the character's voice; the workshop (`recipeShown`, `whyNot`, `needsText`) shows only learned things and lists both in the hover text.
 - **Player structures.** Fire, trap, cage, fence and house logic lives in `src/player/` (crafting.js, capture.js, building.js). Their content files only hold the name and the drawing. Fence posts and gates are cell objects listed in `world.fenceAt`; a post cell is blocked for animals (`blocked`, `landZone`) and, unless it is a gate, for the character.
 - **Wear** (`src/player/durability.js`): uses per tool (`WEAR_PER_USE`), lifespans of structures (`LIFE_DAYS`), the house's 5 years (`HOUSE_LIFE`); `updateWear()` runs with the slow systems. Inventory stacks and built objects carry `wear` (0 new … 1 broken).
 - **The vegetation placement rules** (`src/world/placement.js`) and the test map setup.
@@ -278,7 +284,7 @@ The simulation is deterministic for a given seed, so a "fingerprint" of a run ca
 | `node tools/compare-fp.js /tmp/fp.json tools/baseline.json` | Compares a full run with its baseline. |
 | `tools/smoke.sh index.html /tmp/shot.png` | Loads the real page, saves a screenshot and prints script errors and registry warnings. |
 
-The current baselines were recorded on 2026-11-25 from `index.html` after removing the big fish (quick run about 2 min, full run about 19 min). The first ones came from `world.old.html`; `compare-fp.js` still translates Spanish ids with `tools/words.json`.
+The current baselines were recorded on 2026-11-25 from `index.html` after animals started going around the character (and foxes and jaguars reacting to it) (quick run about 2 min, full run about 19 min). The first ones came from `world.old.html`; `compare-fp.js` still translates Spanish ids with `tools/words.json`.
 
 Notes on the tools:
 

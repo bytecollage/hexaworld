@@ -2,14 +2,14 @@
 //  MAJOR BUILDINGS: HOUSE (SLEEP) AND FENCE BY POSTS (WITH GATE). Choosing where things go (also fires).
 // =====================================================================================
 const BUILDS = {
-  house:   { name: "House", cost: { branches: 30, stones: 15, rope: 6, tannedHide: 2 }, dur: 18,
+  house:   { name: "House", requires: ["axe", "tannedHide"], cost: { branches: 30, stones: 15, rope: 6, tannedHide: 2 }, dur: 18,
             text: "Marked green under the mouse if it fits. Choose where: the character builds it (18 s). Click it to enter: inside you are safe, you have a 20-slot storage and, at dusk or at night, you can sleep until dawn." },
-  fence:  { name: "Fence (by posts)", cost: { branches: 1 }, dur: 1,
-            text: "Click a cell to plant a post (1 wood). Each new post joins the nearest one with rails, filling the cells in between. No animal crosses it: yours do not get out and land predators do not get in. Keep marking cells until you press Esc or the icon again. With the hammer in your hand, click a post to take it out." },
-  chest: { name: "Chest", group: "capture", cost: { branches: 6, rope: 2 }, dur: 5,   // shown in the Capture menu, next to the cage
+  fence:  { name: "Fence (by posts)", requires: ["rope"], tools: ["axe", "knife"], cost: { branches: 1, rope: 1 }, dur: 1,
+            text: "Click a cell to plant a post (1 wood + 1 rope; you need an axe or a knife with you). Each new post joins the nearest one with rails, filling the cells in between. No animal crosses it: yours do not get out and land predators do not get in. Keep marking cells until you press Esc or the icon again. With the hammer in your hand, click a post to take it out." },
+  chest: { name: "Chest", group: "capture", requires: ["axe", "rope"], cost: { branches: 6, rope: 2 }, dur: 5,   // shown in the Capture menu, next to the cage
             text: "A wooden box in the cell you choose: it stays there (it cannot be moved). Click it to open its 10 slots above your inventory and drag things in and out. With the hammer, take it apart when it is empty." },
-  gate: { name: "Gate (post)", cost: { branches: 2, rope: 1 }, dur: 2,
-            text: "A fence post only the character can pass through. Costs 2 wood + 1 rope." },
+  gate: { name: "Gate (post)", requires: ["fence"], tools: ["axe", "knife"], cost: { branches: 2, rope: 1 }, dur: 2,
+            text: "A fence post only the character can pass through. Costs 2 wood + 1 rope; you need an axe or a knife with you." },
 };
 const PLACED_FIRES = ["campfire", "bonfire"];         // fires are also placed by choosing a cell
 let buildMode = null;                                  // "house" | "fence" | "gate" | "campfire" | "bonfire" | null: the next click chooses where
@@ -18,6 +18,8 @@ const FENCE_JOIN = 8;                                 // grid steps: a new post 
 const isPost = o => o.type === "fence" || o.type === "gate";
 const postAt = i => world.fenceAt?.get(i) ?? null;
 function chooseBuild(id) {
+  const def = BUILDS[id] || RECIPES.find(r => r.id === id);
+  if (buildMode !== id && (!learned(def) || !hasTool(def))) { notify(cannotMake(def)); return; }   // skills and tools first
   buildMode = buildMode === id ? null : id;
   const what = PLACED_FIRES.includes(id) ? RECIPES.find(r => r.id === id).name.toLowerCase() : id;
   notify(!buildMode ? "Better not build that now"
@@ -50,7 +52,7 @@ function plantPosts(cells, type) {
   let n = 0;
   for (const c of cells) {
     if (!canPlaceAt(c)) continue;
-    if (!canBuild(type)) { notify(`I need ${recipeText({ cost: BUILDS[type].cost })} for each post`); buildMode = null; renderWorkshop(); break; }
+    if (!canBuild(type)) { notify(hasMaterials(BUILDS[type]) ? cannotMake(BUILDS[type]) : `I need ${recipeText({ cost: BUILDS[type].cost })} for each post`); buildMode = null; renderWorkshop(); break; }
     payBuild(type);
     const o = addObject(c, type, { builtAt: gameDay(), wear: 0 });
     world.fenceAt.set(c, o); n++;
@@ -64,7 +66,7 @@ function pushOut(c) {                                 // animals standing on a c
   const [x, y] = toPixel(...world.cells[out]);
   for (const a of world.animals) if (!SPECIES[a.type].flies && idxAt(a.x, a.y) === c) { const [dx, dy] = wrapDelta(x - a.x, y - a.y); a.x += dx; a.y += dy; a.moving = false; a.goal = null; }
 }
-const canBuild = id => Object.entries(BUILDS[id].cost).every(([t, n]) => amountOf(t) >= n);
+const canBuild = id => learned(BUILDS[id]) && hasTool(BUILDS[id]) && hasMaterials(BUILDS[id]);
 function payBuild(id) { for (const [t, n] of Object.entries(BUILDS[id].cost)) spend(t, n); renderInventory(); }
 // the house is a rectangle of HOUSE_HALF world units around the anchor cell, along one of 6 directions (30° + 60°·k).
 // It takes every cell whose center falls under it. Small things on the ground are moved aside; trees, bushes or builds prevent it
@@ -91,7 +93,7 @@ let houseTurn = 0;                                    // preferred direction whi
 const aroundOf = cells => [...new Set(cells.flatMap(c => world.neighbors[c]))].filter(j => j !== undefined && !cells.includes(j) && !blockedForPlayer(j))
   .sort((a, b) => wrapDistance(a, player.i) - wrapDistance(b, player.i));
 function buildHouse(i) {
-  if (!canBuild("house")) { notify(`For a house I need ${recipeText({ cost: BUILDS.house.cost })}`); return; }
+  if (!canBuild("house")) { notify(cannotMake(BUILDS.house)); return; }
   const h = houseFootprint(i);
   if (!h) { notify("My house will not fit there (no trees, bushes, water or builds under it)"); return; }
   payBuild("house");
@@ -124,7 +126,7 @@ function leaveHouse() {
 }
 // ---- chest: built in a cell like a fire; its storage shows as a row above the inventory while it is open
 function placeChest(i) {
-  if (!canBuild("chest")) { notify(`For a chest I need ${recipeText({ cost: BUILDS.chest.cost })}`); return; }
+  if (!canBuild("chest")) { notify(cannotMake(BUILDS.chest)); return; }
   if (!canPlaceAt(i)) { notify("It will not fit there: I need a free spot"); return; }
   for (const [t, n] of Object.entries(BUILDS.chest.cost)) spend(t, n);
   const o = addObject(i, "chest", { storage: Array(CHEST_SLOTS).fill(null), builtAt: gameDay() });

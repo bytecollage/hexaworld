@@ -3,7 +3,9 @@
 Living document: it describes the game rules as they are implemented. **Update it with every change.**
 For how the code is organized (and how to add or remove a species or plant), see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Last update: 2026-11-24 (finer grid with one element per cell, placing builds by marking a cell, fences by posts, wear of what is built, house lifespan, wind, calmer animals, prey reacting to predators, gulls, vultures that search and land, Next day button).
+Last update: 2026-11-25 (prey remembering where a predator was, skill tree for crafts and builds, fences needing rope and an axe or a knife, jaguars and caimans attacking when bothered 3 times in a day, loading screen, no empty workshop ladder, animals going around the character instead of fleeing, foxes moving out of its way, jaguars watching it and chasing foxes off).
+
+Earlier: 2026-11-24 (finer grid with one element per cell, placing builds by marking a cell, fences by posts, wear of what is built, house lifespan, wind, calmer animals, prey reacting to predators, gulls, vultures that search and land, Next day button).
 
 ---
 
@@ -62,6 +64,8 @@ Last update: 2026-11-24 (finer grid with one element per cell, placing builds by
 - **Terrain brushes** (also in the options popup): Shift+1 ocean, Shift+2 medium, Shift+3 shallow, Shift+4 sand, Shift+5 grass (Shift+0 = move). Painting clears whatever was in the cell and recomputes shores and lakes.
 
 ## 4. Character and interface
+
+- **Loading screen:** while the page loads, and while a new world or the test map is generated, a "Loading…" screen covers everything; the clock, the map buttons and the world appear together when the first frame is drawn, and then the workshop ladder (if it has anything) drops.
 
 - **Movement:**
   - walks to where you click: shortest path (A*), smoothed into straight lines;
@@ -125,8 +129,28 @@ Gathering, building, chopping, cutting meat, finishing off or taking a stunned a
 ### Workshop (crafting)
 On the left, a **rope ladder hangs from the clock** (from behind it), with one group icon on each rung: **campfire** (Fire), **tanned hide tied with rope** (Crafts), **wooden mallet** (Tools), **cage** (Capture: trap, cage and chest) and **thatched house** (Construction). The icons are rustic: stone heads and blades lashed with rope to wooden handles, a coconut-shell jar, a thatched log house.
 - When a game starts the ladder **drops down from the clock** with a short fall and bounce.
-- **Only what can be made now** (you have its materials) **or is already known** (made at least once) appears. Known things stay even when their materials run out (then grey). A recipe that needs a fire counts as possible when you have its materials (it says to go next to a fire). On the **test map every option is shown** from the start (greyed out when it cannot be made yet).
-- A group gets its **rung when it first has something to show**, with a small drop-in animation; until then it is not on the ladder (an empty ladder at the very start).
+- **Only what can be made now** (you know how: its skills are learned, and you have its materials) **or is already known** (made at least once) appears. Known things stay even when their materials run out (then grey). A recipe that needs a fire counts as possible when you have its materials (it says to go next to a fire). On the **test map every option is shown** from the start (greyed out when it cannot be made yet).
+- A group gets its **rung when it first has something to show**, with a small drop-in animation. While no group has anything to show, **there is no ladder at all**; it drops from the clock when the first rung appears.
+- Options that cannot be made yet show a **faded, grey icon on an opaque slot** (the rope does not show through it).
+- **Skills (learning tree):** each thing can only be made after making the things it is learned from (made at least once; the knowledge stays). Some also need a **tool carried** (not used up). The hover text lists both, and the reason when it cannot be made ("first make: …", "carry an axe or a knife"). A new game starts knowing nothing.
+
+| Learned from | Opens |
+|---|---|
+| (nothing) | torch, campfire, rope, sharp stone |
+| campfire | bonfire, resin |
+| rope | basket, fence (+ carrying an axe or a knife) |
+| sharp stone | knife |
+| knife | sharpened bone, hammer, jar |
+| knife + campfire | tanned hide |
+| knife + rope | axe, trap |
+| axe | shovel |
+| axe + rope | chest |
+| axe + tanned hide | house |
+| hammer | pickaxe |
+| trap + axe | cage |
+| fence | gate (+ carrying an axe or a knife) |
+| axe + tanned hide + sharpened bone + resin | bow |
+
 - Clicking one **unfolds its options to the right** (icons only); another click closes it.
 - Icons do not change size or position when unfolding. A **click anywhere outside the ladder** folds the open menu.
 - The group icon has a golden border if any option can be made.
@@ -138,7 +162,7 @@ On the left, a **rope ladder hangs from the clock** (from behind it), with one g
 
 | Craft | Recipe | Used for |
 |---|---|---|
-| **Rope** | 3 grass | axe, bow, trap, cage, gate, house (it also burns: +0.7 h) |
+| **Rope** | 3 grass | axe, bow, trap, cage, fence, gate, house (it also burns: +0.7 h) |
 | **Sharp stone** | 3 stones | knife, axe |
 | **Sharpened bone** | 1 bone + 1 stone | bow (arrow points) |
 | **Tanned hide** | 1 hide + 2 grass, **next to a lit campfire or bonfire** (within 2 reference cells) | bow, house |
@@ -214,8 +238,8 @@ Fourth workshop icon (the house). After choosing a build, the next click on the 
 | Build | Cost | How it works |
 |---|---|---|
 | **House** | 30 wood + 15 stones + 6 rope + 2 tanned hide | Takes the cells under a rectangle of about 3 × 2 reference cells (13 cells) and is **taller than the character**. It looks rustic, like its icon: walls of round logs with dark chinking and log ends crossing at the corners, a thick thatched roof (straw running down the slopes, two tied rows, a ragged fringe at the eaves and a bound ridge), a plank door tied with rope and a chimney of piled stones. While choosing, the cells under the mouse are marked **green if it fits** or red if not (no water, outcrops, trees, bushes or other builds; tall grass, flowers, branches, stones and fallen fruit are moved aside). Built in 18 s from a cell next to it. Nobody crosses it and nothing grows inside. Lasts 5 years (see Wear). See "Inside the house". |
-| **Fence** (by posts) | **1 wood per post** | Each click marks a cell: a **vertical post** at its center. The new post is joined with rails to the **nearest post** (up to 8 cells away, about 3 reference cells), filling the cells in between with posts (all marked green before you click). Keep marking cells until you press Esc, press the icon again or run out of materials. **No animal crosses it**: those inside do not get out and land predators do not get in (birds fly over). The character does not cross it either. With the **hammer** in the hand, click a post to take it out (you recover its wood). |
-| **Gate** (post) | 2 wood + 1 rope | A post (with lighter rails) that **only the character passes through**. |
+| **Fence** (by posts) | **1 wood + 1 rope per post**, carrying an **axe or a knife** | Each click marks a cell: a **vertical post** at its center. The new post is joined with rails to the **nearest post** (up to 8 cells away, about 3 reference cells), filling the cells in between with posts (all marked green before you click). Keep marking cells until you press Esc, press the icon again or run out of materials. **No animal crosses it**: those inside do not get out and land predators do not get in (birds fly over). The character does not cross it either. With the **hammer** in the hand, click a post to take it out (you recover its wood). |
+| **Gate** (post) | 2 wood + 1 rope, carrying an **axe or a knife** (after making a fence) | A post (with lighter rails) that **only the character passes through**. |
 | **Chest** (in the **Capture** menu, next to the cage) | 6 wood + 2 rope | Cheaper than the house, for before you can build one. **Choose its cell** (green if it fits); built in 5 s and it **stays there** (it cannot be moved or picked up). **Click it** → the character goes next to it and it opens: its **10 slots** appear as a row above the inventory. It closes when you walk away (more than 2 reference cells), when you **click anywhere else on the map**, with its ✕ button or with Esc. What you store stays in it; **each chest keeps its own things**. It looks rustic: rough planks between round branch posts and a plank lid tied down with two ropes. |
 
 ### Inside the house
@@ -230,7 +254,7 @@ Fourth workshop icon (the house). After choosing a build, the next click on the 
 
 | What | Takes | You recover |
 |---|---|---|
-| Fence post | 1 s | 1 wood |
+| Fence post | 1 s | 1 wood + 1 rope |
 | Gate | 1.5 s | 2 wood + 1 rope (all) |
 | Chest | 2 s | 6 wood + 2 rope (all). **Only when it is empty.** |
 | House | 8 s | 30 wood + 15 stones + 6 rope + 2 tanned hide (all). **Only with the storage empty.** |
@@ -417,7 +441,7 @@ Fourth workshop icon (the house). After choosing a build, the next click on the 
 
 ### 6.3 Fleeing
 
-| Animals | Flee from the character closer than | Flee from a predator hunting them closer than |
+| Animals | Wary of the character closer than (they run at half of it) | Flee from a predator hunting them closer than |
 |---|---|---|
 | Deer | 3 cells | 3 cells |
 | Peccaries | 3 | 2.5 |
@@ -427,10 +451,22 @@ Fourth workshop icon (the house). After choosing a build, the next click on the 
 | Frogs | — | 1.2 |
 | Turtles, crabs | — | 1 |
 
+- **The character makes them wary, not panicked.** Within the distance in the table:
+  - on their way to drink, eat, rest or shelter they **keep their goal and look for a way around** the character (their routes never take them closer to it than they already are); if there is no way around, they stop, watch and try again a moment later;
+  - drinking or eating, they carry on, watchful;
+  - idle, they **walk** a few steps away; lying down or hidden among the pines, they stay still;
+  - only when the character comes **within half of that distance** do they run, as before.
+  - When they choose where to drink, eat or shelter with the character nearby, they pick places away from it. Rabbits always go straight to their own burrow.
+  - When the character is inside the house they ignore it.
+- **Foxes are not afraid of the character**, but closer than 3 cells they trot a few cells out of its way (if they are not chasing a prey), and stay there a while.
+- **Jaguars:** in daylight (or near light) a jaguar that is not hungry **stands still and watches** the character closer than 6 cells, facing it ("A jaguar is watching me…"); closer than 2.5 cells it **slinks off** slowly. A hungry jaguar ignores the character and hunts. In the dark it is still dangerous (see Night).
+- **Do not bother a jaguar or a caiman.** Each time the character **walks toward** an adult and gets closer than **4 cells (jaguar)** or **3 cells (caiman)** counts as an approach. It counts again only after moving away (about 5 cells from a jaguar, 4 from a caiman), or after the jaguar has slunk off from you, and at most once every few seconds; passing by or an animal coming to you does not count. On the **2nd approach in the same day** it warns you ("The jaguar growls at me…", "The caiman hissed at me…"); on the **3rd** it **attacks, even by day**: for about 10 s the jaguar charges and kills the character if it reaches it, and the caiman lunges to the edge of its shore and bites if the character is within 1.2 cells. A fire near it, getting into the house or keeping out of its reach saves you. The count starts again every day.
+- **Jaguars chase foxes off:** a fox that comes within 3 cells of an adult jaguar gets a short charge and runs away fast, leaving whatever it was eating.
 - **Any land predator nearby is a threat**, hunting or not: deer, peccaries and the others move away when a jaguar, fox or caiman comes within their alert distance, even if it is only strolling. Birds of prey only scare them when they dive at something.
 - A **sleeping** or resting animal rarely notices it (about a third of the distance); one **drinking or eating** notices it later (60%). A predator lying still is noticed later (70%), and one eating later still (50%).
 - **Caimans:** animals do not go to drink at the shore right next to a caiman they can see; they look for another spot of the lake.
 - **Stealth:** a hunting eagle, fox, shark, gull and heron get closer unseen (the heron is barely noticed).
+- **Fear memory:** after fleeing from a predator an animal remembers where it was for about **3 game hours**: its trips go around that spot, and if it is hidden (burrow, grove) it **stays hidden** unless thirst or hunger become pressing. A **very thirsty or hungry** animal takes the risk: it only runs from a predator that is actually coming for it, not from one resting or strolling nearby. (Before, a fox lurking by a burrow made the rabbit come out, see it, run back in and come out again endlessly.)
 - **How they flee:**
   - small mammals: run to another forest that takes them away from the threat;
   - rabbits: to their burrow;

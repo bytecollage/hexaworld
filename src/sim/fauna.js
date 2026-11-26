@@ -27,7 +27,7 @@ function segmentInZone(zone, a, bx, by) {  // does the whole segment stay inside
   }
   return true;
 }
-function chooseDestination(a, fleeFrom = null) {
+function chooseDestination(a, fleeFrom = null, calm = false) {   // calm: steps away from the character walking, not running
   const e = SPECIES[a.type];
   for (let attempt = 0; attempt < 8; attempt++) {
     let ang = rnd() * TAU;
@@ -35,7 +35,7 @@ function chooseDestination(a, fleeFrom = null) {
     else if (AQUATIC.has(a.type) && rnd() < 0.7) ang = a.dir + (rnd() - 0.5) * 1.4;   // fish change course little
     const d = (fleeFrom ? e.step * 1.2 : 0.4 + rnd() * e.step) * SQ3;
     const tx = a.x + Math.cos(ang) * d, ty = a.y + Math.sin(ang) * d;
-    if (segmentInZone(zoneOf(a), a, tx, ty)) { a.tx = tx; a.ty = ty; a.moving = true; a.fleeing = !!fleeFrom; return; }
+    if (segmentInZone(zoneOf(a), a, tx, ty)) { a.tx = tx; a.ty = ty; a.moving = true; a.fleeing = !!fleeFrom && !calm; return; }
   }
   a.wait = 0.5 + rnd();               // found nowhere to go: waits a little
 }
@@ -79,13 +79,8 @@ function stepAnimals(dtStep) {
       const d = threatNearby(a, e);
       if (d) fleeFrom(a, e, wrapDelta(a.x - d.x, a.y - d.y), d);
     }
-    if (e.needs && player.i >= 0 && !a.fleeing && !a.dead && !a.dyingSince && !a.goal?.runs && !(e.needs.house && a.inShelter) && !stunned(a)) {   // they flee if you come close
-      const [dx, dy] = wrapDelta(a.x - player.x, a.y - player.y);
-      if (Math.hypot(dx, dy) < e.needs.fleeing * SQ3) {
-        if (e.needs.hidden) fleeToOtherForest(a, [dx, dy]);                                     // small ones: to another forest
-        else chooseDestination(a, [dx, dy]);
-      }
-    }
+    if (e.needs && playerAround() && !a.fleeing && !a.dead && !a.dyingSince && !a.goal?.runs && !(e.needs.house && a.inShelter) && !stunned(a))
+      reactToPlayer(a, e);                                                                 // wary of the character: go around it, or flee if it is too close
     if (e.fleeing && player.i >= 0 && !a.fleeing) {                                       // small fish: flee at 1 cell
       const [dx, dy] = wrapDelta(a.x - player.x, a.y - player.y);
       if (Math.hypot(dx, dy) < e.fleeing * SQ3) chooseDestination(a, [dx, dy]);

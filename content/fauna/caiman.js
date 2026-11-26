@@ -12,6 +12,12 @@ defineFauna({
     onlyWeak: new Set(["deer", "peccary"]), onlyShore: true, attackRadius: 1.3,   // big ones, only when weak
     threatensPlayer: "shore",                       // in the dark it attacks the character on the lake shore
   },
+  provoke: {                                        // walking up to it 3 times in a day (a bit closer than to the jaguar): it lunges, by day too
+    radius: 3, times: 3, charge: 6, reach: 1.2,
+    warn: ["The caiman hissed at me. I should keep away from it", "That caiman opened its jaws at me…"],
+    attacks: ["The caiman is lunging at me!", "The caiman is coming out of the water!"],
+    kills: "You bothered the caiman too often: it dragged you into the lake.",
+  },
   breed: { seasons: [1], pct: 0.3, litter: [1, 1], food: true, cap: 1 },
   spawn: {                                          // one adult in each big lake (max. 3), on its shore
     phase: 180, normalOnly: true,

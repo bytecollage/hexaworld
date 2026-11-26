@@ -43,12 +43,75 @@ function updatePredator(a, dt) {
     else if (moveToward(a, a.x + dx / d * 3, a.y + dy / d * 3, e.speed * SQ3 * 1.5, dt) === "blocked") a.moving = false;
     return;
   }
+  if (e.provoke && provoked(a, e, dt)) return;          // bothered too often: it attacks the character, by day too
   if (c.threatensPlayer && threatenPlayer(a, e, dt)) return;   // with no light at night, the character is prey
+  if (a.evade) { evading(a, e, dt); return; }          // moving out of the way (of the character, or of a bigger predator)
+  if (!a.chaseTarget && e.nearPlayer && reactToPlayerAsPredator(a, e, dt)) return;
+  if (!a.chaseTarget && e.chasesOff && chaseOff(a, e, dt)) return;
   const isActive = c.active === "always" || (c.active === "day") === (currentPhase().name === "Day");
   if (!isActive || nowDay < a.restsUntil || (a.hunger < (c.huntsFrom ?? 1) && !a.chaseTarget)) { a.chaseTarget = null; a.sprintSince = 0; return rest(a, e, dt, isActive); }
   if (c.mode === "scavenger") return scavenge(a, e, dt);
   if (c.mode === "ambusher") return ambush(a, e, dt);
   pursue(a, e, dt);
+}
+// ---- reactions that are not hunting: moving out of the character's way, watching it, chasing rivals off
+function evadeFrom(a, x, y, dist, pace, secs) {          // a.evade: a point `dist` away from (x, y), reached at `pace` × speed
+  const [dx, dy] = wrapDelta(a.x - x, a.y - y), base = Math.atan2(dy, dx);
+  for (const off of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8]) {   // straight away if it can, otherwise slanting
+    const tx = a.x + Math.cos(base + off) * dist, ty = a.y + Math.sin(base + off) * dist, i = idxAt(tx, ty);
+    if (i !== undefined && zoneOf(a)(i)) { a.evade = { x: tx, y: ty, pace, until: gameDay() + secs / DAY_DURATION }; a.stroll = null; return true; }
+  }
+  return false;
+}
+function evading(a, e, dt) {
+  const r = moveToward(a, a.evade.x, a.evade.y, e.speed * a.evade.pace * SQ3, dt);
+  if (r !== "moving" || gameDay() > a.evade.until) {
+    if (a.evade.fromPlayer) a.playerClose = false;     // it got away from the character: walking up to it again counts (provoke)
+    a.evade = null; a.moving = false; a.wait = e.wait[0];   // it stops there a while
+  }
+}
+// nearPlayer: { retreat, watch, says }: within `retreat` reference cells it trots off; within `watch` (when it is not
+// hungry) it stands still facing the character. A hungry predator does not stop to watch.
+function reactToPlayerAsPredator(a, e, dt) {
+  if (!playerAround() || sizeOf(a) < 0.8) { a.watchesPlayer = false; return false; }
+  const np = e.nearPlayer, d = Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y));
+  if (d < np.retreat * SQ3) {
+    a.watchesPlayer = false;
+    const ok = evadeFrom(a, player.x, player.y, (np.retreat + 2.5) * SQ3, np.pace ?? 1, 8);
+    if (ok) a.evade.fromPlayer = true;
+    return ok;
+  }
+  if (np.watch && d < np.watch * SQ3 && a.hunger < (e.hunt.huntsFrom ?? 1)) {
+    a.moving = false; a.dir = Math.atan2(...wrapDelta(player.x - a.x, player.y - a.y).reverse());
+    if (!a.watchesPlayer && np.says && !simulating) notify(np.says);
+    a.watchesPlayer = true;
+    return true;
+  }
+  a.watchesPlayer = false;
+  return false;
+}
+// chasesOff: { ids, radius }: a rival of those species that comes within `radius` reference cells gets a short charge
+// and runs away (jaguars and foxes). It leaves whatever it was eating.
+function chaseOff(a, e, dt) {
+  const co = e.chasesOff;
+  if (a.charge) {
+    const r = a.charge.rival;
+    if (gameDay() > a.charge.until || r.dead || r.toRemove) { a.charge = null; a.moving = false; return false; }
+    moveToward(a, r.x, r.y, e.speed * 1.6 * SQ3, dt);
+    return true;
+  }
+  if (gameDay() < (a.chargedAt || 0) + 0.02 || sizeOf(a) < 0.8) return false;
+  for (const r of world.animals) {
+    if (!co.ids.has(r.type) || r.dead || r.dyingSince || r.toRemove || r.evade) continue;
+    const [dx, dy] = wrapDelta(r.x - a.x, r.y - a.y);
+    if (Math.hypot(dx, dy) >= co.radius * SQ3) continue;
+    const re = SPECIES[r.type];
+    r.eating = 0; r.chaseTarget = null; r.sprintSince = 0;
+    evadeFrom(r, a.x, a.y, (co.radius + 4) * SQ3, re.hunt?.huntSpeed ? re.hunt.huntSpeed / re.speed : 2, 6);
+    a.charge = { rival: r, until: gameDay() + 1.5 / DAY_DURATION }; a.chargedAt = gameDay(); a.chaseTarget = null;
+    return true;
+  }
+  return false;
 }
 function rest(a, e, dt, isActive) {                    // not hungry or outside its hours: at home or strolling nearby
   const nowDay = gameDay(), house = a.house;
@@ -197,6 +260,7 @@ function scavenge(a, e, dt) {                          // vulture: soars searchi
   a.chaseTarget = null; a.hunger = 0; a.lastMeal = gameDay(); a.eating = 50;
 }
 function fleeFrom(a, e, away, origin_) {                  // reaction of a prey to a predator (or the character)
+  if (e.needs && origin_ !== player) frighten(a, origin_); // it remembers where the danger was
   if (e.needs?.hidden) fleeToOtherForest(a, away, origin_);
   else chooseDestination(a, away);
 }
@@ -206,9 +270,11 @@ function fleeFrom(a, e, away, origin_) {                  // reaction of a prey 
 function threatNearby(a, e) {
   const asleep = a.sleeping || a.inShelter || (a.restUntil || 0) > gameDay() || a.dyingSince;
   const alert = e.alert * SQ3 * (asleep ? 0.35 : a.action ? 0.6 : 1);
+  const desperate = e.needs && (a.thirst >= PRESSING || a.hunger >= PRESSING);   // very thirsty or hungry: it takes the risk
   for (const d of world.predatorsNow) {
     const de = SPECIES[d.type], c = de.hunt;
     if (!c.preys.has(a.type) || !visibleTo(a, d)) continue;
+    if (desperate && !d.chaseTarget) continue;            // only one coming for it makes it run
     if (de.flies && !d.chaseTarget) continue;             // a bird circling high is no threat until it dives
     const seen = d.chaseTarget ? (c.stealth ?? 1) : d.eating > 0 ? 0.5 : d.moving ? 1 : 0.7;
     if (Math.hypot(...wrapDelta(d.x - a.x, d.y - a.y)) < alert * seen) return d;

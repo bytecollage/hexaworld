@@ -107,7 +107,7 @@ $("restartGame").onclick = () => {                     // new game: new world, e
   resetUpgrades(); hand.item = null; hand.torchLeft = 0; player.dead = false; closeCage();
   if (player.sleeping) wakeUp(); buildMode = null; player.inside = null; openChestRef = null; renderContainers();
   $("death").classList.remove("visible");
-  world.seed = 1 + Math.floor(Math.random() * 1e9); generate(); renderInventory();
+  withLoading("Creating a new world…", () => { world.seed = 1 + Math.floor(Math.random() * 1e9); generate(); renderInventory(); });
 };
 document.addEventListener("pointerdown", e => {          // a click anywhere outside the workshop folds its open menu
   if (workshopOpen && !e.target.closest?.("#workshop")) { workshopOpen = null; renderWorkshop(); }
@@ -131,14 +131,18 @@ $("workshop").addEventListener("click", e => {
   const b = e.target.closest("[data-recipe]"); if (b) craft(b.dataset.recipe);
 });
 $("newWorld").onclick = () => {
-  if (world.testMap) { world.testMap = false; world.N = RADIUS_MIN; }
-  world.seed = 1 + Math.floor(Math.random() * 1e9); generate();
+  withLoading("Creating a new world…", () => {          // the size changes only with the new world (the old one keeps moving until then)
+    if (world.testMap) { world.testMap = false; world.N = RADIUS_MIN; }
+    world.seed = 1 + Math.floor(Math.random() * 1e9); generate();
+  });
 };
 $("testMap").onclick = () => {
-  world.testMap = true; world.N = TEST_RADIUS;
-  world.seed = 1 + Math.floor(Math.random() * 1e9); generate();
-  for (const t of TEST_RESOURCES) { const missing = 500 - amountOf(t); if (missing > 0) store(t, missing); }   // to test without gathering
-  notify("Test map: I have 500 of each natural resource");
+  withLoading("Creating the test map…", () => {         // the size changes only with the new world (the old one keeps moving until then)
+    world.testMap = true; world.N = TEST_RADIUS;
+    world.seed = 1 + Math.floor(Math.random() * 1e9); generate();
+    for (const t of TEST_RESOURCES) { const missing = 500 - amountOf(t); if (missing > 0) store(t, missing); }   // to test without gathering
+    notify("Test map: I have 500 of each natural resource");
+  });
 };
 const TEST_RESOURCES = ["branches", "stones", "grass", "berries", "flowers", "fruit", "coconut", "pineCone", "hide", "bones"];
 $("nextDay").onclick = skipToNextDay;

@@ -17,8 +17,54 @@ const shelterTree = i => { const o = objs(i)[0]; return !!o && !!DEF[o.type]?.tr
 const isGrove = i => { if (i === undefined) return false; let n = shelterTree(i) ? 1 : 0;
   for (const j of world.neighbors[i]) if (shelterTree(j) && ++n >= 2) return true; return n >= 2; };
 const shelterTime = () => currentPhase().name !== "Day";   // at dusk they go to the grove; they come out at dawn
+// ---- the character: animals with needs keep their distance. Their routes go around it, so a trip to drink or eat
+//      does not turn into an endless approach-flee loop; they only run when it comes really close.
+const playerAround = () => player.i >= 0 && !player.dead && !player.inside;
+const PANIC = 0.5;                                     // share of the fleeing distance under which they run
+function avoidingPlayer(a, zone) {                     // the zone without the cells near the character (never closer than it is now)
+  const e = SPECIES[a.type];
+  if (!e.needs?.fleeing || !playerAround()) return zone;
+  const d0 = wrapDistance(idxAt(a.x, a.y), player.i);
+  if (d0 > cellsFor(SIGHT_CELLS)) return zone;          // far away: it does not care
+  const keep = Math.min(cellsFor(e.needs.fleeing + 1), d0);
+  return i => zone(i) && wrapDistance(i, player.i) >= keep;
+}
+// ---- fear: after fleeing from a predator an animal remembers where it was for a while (a.fear). Its routes go around
+//      that spot and, if it is hidden (burrow, grove), it stays there unless thirst or hunger are pressing. Without it a
+//      fox lurking by a burrow made the rabbit come out, see it, run back in and come out again every second.
+const FEAR_SECONDS = 45;                               // game seconds (about 3 game hours)
+const PRESSING = 1.6;                                  // thirst or hunger that makes it come out anyway
+const afraid = a => (a.fear?.until || 0) > gameDay();
+function frighten(a, origin_) { a.fear = { x: origin_.x, y: origin_.y, until: gameDay() + FEAR_SECONDS / DAY_DURATION }; }
+function avoidingFear(a, zone) {                       // the zone without the cells near the remembered predator (never closer than now)
+  if (!afraid(a)) return zone;
+  const R = ((SPECIES[a.type].alert || 2) + 1) * SQ3, f = a.fear;
+  const far = i => { const [x, y] = toPixel(...world.cells[i]); return Math.hypot(...wrapDelta(x - f.x, y - f.y)); };
+  const keep = Math.min(R, Math.hypot(...wrapDelta(a.x - f.x, a.y - f.y)));
+  return i => zone(i) && far(i) >= keep;
+}
+function reactToPlayer(a, e) {
+  const away = wrapDelta(a.x - player.x, a.y - player.y), d = Math.hypot(...away), R = e.needs.fleeing * SQ3;
+  if (d >= R) return;
+  if (d < R * PANIC) {                                  // too close: it runs
+    if (e.needs.hidden) fleeToOtherForest(a, away);     // small ones: to another forest
+    else chooseDestination(a, away);
+    return;
+  }
+  if (a.action) return;                                // drinking or eating: it carries on, watchful
+  const m = a.goal;
+  if (m) {                                             // on a trip: it keeps its goal and looks for a way around the character
+    if (!["drink", "eat", "shelter", "rest"].includes(m.type) || (m.avoids && gameDay() - m.at < 3 / DAY_DURATION)) return;
+    a.goal = null; planTrip(a, m.type);
+    if (!a.goal) { a.moving = false; a.retry = 3; }     // no way around: it stops and watches, then tries again
+    return;
+  }
+  if (e.needs.hidden || a.inShelter || (a.restUntil || 0) > gameDay()) return;   // hidden or lying down: it stays still
+  if (!a.moving) chooseDestination(a, away, true);      // idle: it walks a few steps away
+}
 function fleeToOtherForest(a, away, origin_ = player) {  // runs to the nearest forest that is not its own, without getting closer to the threat
   const d0 = Math.hypot(...away);
+  if (origin_ !== player) frighten(a, origin_);
   a.action = null; a.goal = null;
   if (SPECIES[a.type].needs.house) planTrip(a, "shelter");          // rabbits: they run to their burrow
   else planTrip(a, "relocateAt", i => {
@@ -29,7 +75,8 @@ function fleeToOtherForest(a, away, origin_ = player) {  // runs to the nearest 
   else { a.retry = 0; chooseDestination(a, away); }   // no other forest reachable: flees aimlessly
 }
 function planTrip(a, type = a.thirst >= 1 ? "drink" : "eat", predicate = null) {
-  const e = SPECIES[a.type], diet = e.needs.diet, here = idxAt(a.x, a.y);
+  const e = SPECIES[a.type], diet = e.needs.diet, here = idxAt(a.x, a.y), z0 = zoneOf(a),
+        zone = type === "shelter" && e.needs.house ? z0 : avoidingFear(a, avoidingPlayer(a, z0));   // to its own burrow it always goes straight
   const free = e.needs.house ? (i => i === a.burrow)                                                   // rabbits: their burrow
                            : (i => isGrove(i) && !world.animals.some(b => b !== a && b.shelter === i));   // one animal per cell
   const chaseTarget = type === "drink" ? (i => world.lakeEdge[i] === 1 && !ambusherNear(a, i))   // not next to a caiman
@@ -39,7 +86,7 @@ function planTrip(a, type = a.thirst >= 1 ? "drink" : "eat", predicate = null) {
                  : free;
   let route, dietUsed = diet;
   if (type === "eat" && e.needs.hungryDiet) {       // deer: grass in sight; if there is none and they are very hungry, flowers or fruit;
-    const search = (d, max) => findRoute(here, i => hasFood(i, d), zoneOf(a), max);   // otherwise, they go farther for grass
+    const search = (d, max) => findRoute(here, i => hasFood(i, d), zone, max);   // otherwise, they go farther for grass
     const hungry = a.hunger >= VERY_HUNGRY;
     route = search(diet, SIGHT_CELLS);
     if (!route && hungry) { route = search(e.needs.hungryDiet, SIGHT_CELLS); if (route) dietUsed = e.needs.hungryDiet; }
@@ -47,15 +94,15 @@ function planTrip(a, type = a.thirst >= 1 ? "drink" : "eat", predicate = null) {
     if (!route && hungry) { route = search(e.needs.hungryDiet, Infinity); if (route) dietUsed = e.needs.hungryDiet; }
   } else {
     if (type === "eat" && diet.takesBait === true && world.traps?.some(t => t.baitItem && !t.prey)) {   // the bait smells: they prefer it (≤8 cells)
-      route = findRoute(here, i => objs(i).some(o => o.type === "trap" && o.baitItem && !o.prey), zoneOf(a), 8);
+      route = findRoute(here, i => objs(i).some(o => o.type === "trap" && o.baitItem && !o.prey), zone, 8);
     }
-    route ||= findRoute(here, predicate ? (i => chaseTarget(i) && predicate(i)) : chaseTarget, zoneOf(a), type === "rest" ? 10 : Infinity);
+    route ||= findRoute(here, predicate ? (i => chaseTarget(i) && predicate(i)) : chaseTarget, zone, type === "rest" ? 10 : Infinity);
   }
   if (!route) { a.retry = 15; return; }   // nothing reachable: try again later
   if (type === "relocateAt") type = "shelter";
   const end = route[route.length - 1];
   const food = type === "eat" ? foodAt(end, dietUsed) : null;
-  a.goal = { type, route, k: 0, diet: dietUsed,
+  a.goal = { type, route, k: 0, diet: dietUsed, at: gameDay(), avoids: zone !== z0 || undefined,
              end: food ? [food.ox * 0.9, food.oy * 0.9 + 0.12] : [(rnd() - 0.5) * 0.5 * CELL_R, (rnd() - 0.5) * 0.4 * CELL_R] };
   if (type === "shelter") a.shelter = end;
   a.fleeing = false;

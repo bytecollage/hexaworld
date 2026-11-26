@@ -2,42 +2,43 @@
 //  CRAFTING (workshop), HAND, FIRE, NIGHT LIGHT AND TOOLS
 // =====================================================================================
 // wood = gathered branches (or wood from felled trees)
+// requires: what must have been made before (learned skills); tools: one of them must be carried (not used up)
 const RECIPES = [
   { id: "torch", group: "fire", name: "Torch", cost: { branches: 1, grass: 1 },
     text: "Lasts 1 night. Carried in the hand: gives little light, but it moves with you. Keeps predators away." },
   { id: "campfire", group: "fire", name: "Campfire", cost: { branches: 3 },
     text: "Choose its cell: the character lights it there. Burns all night (it does not move). Lights up a bit more around it. Keeps predators away." },
-  { id: "bonfire", group: "fire", name: "Bonfire", cost: { stones: 5, branches: 3 },
+  { id: "bonfire", group: "fire", name: "Bonfire", requires: ["campfire"], cost: { stones: 5, branches: 3 },
     text: "Choose its cell: the character builds it there. Burns all night and gives more light. It does not move. When it goes out the stones remain: relight it by adding wood or grass (it lasts according to what you add). Keeps predators away." },
   { id: "rope", group: "crafts", name: "Rope", cost: { grass: 3 },
     text: "Grass twisted into rope. Needed for the axe, the bow, traps, cages, gates and the house." },
   { id: "sharpStone", group: "crafts", name: "Sharp stone", cost: { stones: 3 },
     text: "A stone knapped into an edge with two others. The blade of the knife and the axe." },
-  { id: "sharpBone", group: "crafts", name: "Sharpened bone", cost: { bones: 1, stones: 1 },
+  { id: "sharpBone", group: "crafts", name: "Sharpened bone", requires: ["knife"], cost: { bones: 1, stones: 1 },
     text: "A bone ground to a point with a stone. Arrow points for the bow. Bones come with the meat of dead animals." },
-  { id: "tannedHide", group: "crafts", name: "Tanned hide", cost: { hide: 1, grass: 2 }, needsFire: true,
+  { id: "tannedHide", group: "crafts", name: "Tanned hide", requires: ["knife", "campfire"], cost: { hide: 1, grass: 2 }, needsFire: true,
     text: "A hide smoked over grass: only next to a lit campfire or bonfire. For the bow and the house. Hides come with the meat of big animals." },
-  { id: "resin", group: "crafts", name: "Resin", cost: { pineCone: 2 }, needsFire: true,
+  { id: "resin", group: "crafts", name: "Resin", requires: ["campfire"], cost: { pineCone: 2 }, needsFire: true,
     text: "Pine cones melted into resin: only next to a lit campfire or bonfire. Glue for the arrows of the bow; it also burns well." },
-  { id: "basket", group: "crafts", name: "Basket", cost: { grass: 6, rope: 2 }, container: 5,
+  { id: "basket", group: "crafts", name: "Basket", requires: ["rope"], cost: { grass: 6, rope: 2 }, container: 5,
     text: "A woven basket you carry with you: 5 more slots, opened with Shift (or its button at the right of the inventory) above the inventory. Lasts half a year (10 days): then it breaks and what it held falls beside you. Lost if you die." },
-  { id: "knife", group: "tools", name: "Knife", cost: { sharpStone: 1, grass: 1 },
+  { id: "knife", group: "tools", name: "Knife", requires: ["sharpStone"], cost: { sharpStone: 1, grass: 1 },
     text: "With it in your hand, click a dead animal to cut its meat. Takes one inventory slot." },
-  { id: "axe", group: "tools", name: "Axe", cost: { sharpStone: 1, branches: 2, rope: 1 },
+  { id: "axe", group: "tools", name: "Axe", requires: ["knife", "rope"], cost: { sharpStone: 1, branches: 2, rope: 1 },
     text: "With it in your hand: click a tree to chop it down (gives wood); click a nearby animal to throw it and hunt it. Takes one inventory slot." },
-  { id: "hammer", group: "tools", name: "Hammer", cost: { stones: 2, branches: 2 },
+  { id: "hammer", group: "tools", name: "Hammer", requires: ["knife"], cost: { stones: 2, branches: 2 },
     text: "With it in your hand: click something built (fence section, gate, house, cage, trap, bonfire, campfire) to dismantle it and recover its materials." },
-  { id: "pickaxe", group: "tools", name: "Pickaxe", cost: { stones: 4, branches: 2 },
+  { id: "pickaxe", group: "tools", name: "Pickaxe", requires: ["hammer"], cost: { stones: 4, branches: 2 },
     text: "With it in your hand: click an outcrop to break off rock; the stones fall around it and must be picked up. The outcrop never runs out." },
-  { id: "shovel", group: "tools", name: "Shovel", cost: { branches: 3, stones: 2 },
+  { id: "shovel", group: "tools", name: "Shovel", requires: ["axe"], cost: { branches: 3, stones: 2 },
     text: "With it in your hand: click a fruit bush, tall grass or flowers to dig it up and carry it; then, with the sapling in your hand, click where you want to replant it." },
-  { id: "bow", group: "tools", name: "Bow and arrows", cost: { branches: 3, rope: 2, tannedHide: 1, sharpBone: 1, resin: 1 },
+  { id: "bow", group: "tools", name: "Bow and arrows", requires: ["axe", "tannedHide", "sharpBone", "resin"], cost: { branches: 3, rope: 2, tannedHide: 1, sharpBone: 1, resin: 1 },
     text: "Bow with its arrows (a single object). With it in your hand: click a land animal less than 9 cells away to shoot it (the axe only reaches 4.5). It also works against the jaguar." },
-  { id: "jar", group: "tools", name: "Jar", cost: { coconut: 2 },
+  { id: "jar", group: "tools", name: "Jar", requires: ["knife"], cost: { coconut: 2 },
     text: "Stores and carries water: with it in your hand, click a lake to fill it (5 water). Used for the cage's trough." },
-  { id: "trap", group: "capture", name: "Trap", cost: { branches: 4, rope: 1 },
+  { id: "trap", group: "capture", name: "Trap", requires: ["knife", "rope"], cost: { branches: 4, rope: 1 },
     text: "With it in your hand, click the ground to place it. It needs fruit or berries as bait: a small mammal goes in to eat and is trapped alive. Click it to pick it up (with whatever is inside)." },
-  { id: "cage", group: "capture", name: "Cage", cost: { branches: 8, rope: 2 },
+  { id: "cage", group: "capture", name: "Cage", requires: ["trap", "axe"], cost: { branches: 8, rope: 2 },
     text: "With it in your hand, click the ground to place it. It holds 4 animals: click it to put in the ones from your inventory, give them food and water, take them out or pick it up." },
 ];
 const FIRE = {                                       // light and protection radius (cells)
@@ -56,9 +57,18 @@ const upgrades = new Set();                          // recipes with `container`
 let basket = null, basketMadeAt = 0;                 // the basket's slots (null until it is made) and when it was made
 const known = new Set();                             // recipes and builds made at least once: they stay in the workshop
 const learn = id => { if (!known.has(id)) { known.add(id); renderWorkshop(); } };
-const canMake = r => hasMaterials(r) && (!r.needsFire || nearFire()) && !(r.container && upgrades.has(r.id));
+const nameOf = id => (RECIPES.find(r => r.id === id) || BUILDS[id])?.name.toLowerCase() || id;
+const toLearn = r => (r.requires || []).filter(id => !known.has(id));   // skills still missing for it
+const learned = r => toLearn(r).length === 0;
+const hasTool = r => !r.tools || r.tools.some(t => amountOf(t) > 0);
+const orList = l => l.map(t => an(nameOf(t))).join(" or ");
+const andList = l => l.length < 2 ? l.join("") : l.slice(0, -1).join(", ") + " and " + l[l.length - 1];
+const canMake = r => learned(r) && hasTool(r) && hasMaterials(r) && (!r.needsFire || nearFire()) && !(r.container && upgrades.has(r.id));
 function resetUpgrades() { upgrades.clear(); known.clear(); basket = null; basketOpen = false; inventory.fill(null); dropLadder(); }   // new game
-const cannotMake = r => hasMaterials(r) ? `I need a lit fire next to me for that` : `For ${an(r.name.toLowerCase())} I need ${recipeText(r)}`;
+const cannotMake = r => !learned(r) ? `I do not know how yet: first I have to make ${andList(toLearn(r).map(id => an(nameOf(id))))}`
+  : !hasTool(r) ? `I need ${orList(r.tools)} with me for that`
+  : !hasMaterials(r) ? `For ${an(r.name.toLowerCase())} I need ${recipeText(r)}`
+  : `I need a lit fire next to me for that`;
 function spend(type, n) {                            // takes n out of the inventory (and if it is not enough, from the hand); frees what becomes empty
   const k = inventory.findIndex(r => r && r.type === type);
   if (k >= 0) { const m = Math.min(n, inventory[k].amount); inventory[k].amount -= m; n -= m; if (!inventory[k].amount) inventory[k] = null; }
@@ -106,7 +116,7 @@ function craftNow(id) {                              // tools, capture items and
 }
 function lightFireAt(id, i) {                          // campfire or bonfire in the chosen cell
   const r = RECIPES.find(r => r.id === id);
-  if (!canMake(r)) { notify(`For ${an(r.name.toLowerCase())} I need ${recipeText(r)}`); return; }
+  if (!canMake(r)) { notify(cannotMake(r)); return; }
   if (!canPlaceAt(i)) { notify("It will not fit there: I need a free spot"); return; }
   for (const [t, n] of Object.entries(r.cost)) spend(t, n);
   const o = addObject(i, id, { burnsUntil: nextDawn(), builtAt: gameDay() });
@@ -169,6 +179,40 @@ function threatenPlayer(a, e, dt) {                       // returns true if the
   moveToward(a, player.x, player.y, e.speed * SQ3 * (sprint ? e.hunt.huntSpeed : 0.8), dt);
   if (Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y)) < 0.5) killPlayer(`${an(SINGULAR[a.type].toLowerCase(), "A")} attacked you in the dark.`);
   return true;
+}
+// provoke: { radius, times, charge, reach, warn, attacks, kills }: each time the character walks within `radius` reference
+// cells of it counts as an approach (it has to move away again before the next one counts). The approach before the
+// last gets a warning; the last one in the same day makes it charge at `charge` × speed for 10 s, by day too, and kill
+// the character if it reaches it (within `reach` reference cells: the caiman bites from the edge of the water). A fire,
+// the house or keeping out of its reach (the caiman cannot leave its shore) saves you.
+const PROVOKED_SECONDS = 10, APPROACH_GAP = 5;       // game seconds of the charge; and between two approaches that count
+function provoked(a, e, dt) {                          // true while it is attacking the character
+  const pv = e.provoke;
+  if (a.provokedUntil > gameDay()) {
+    if (!playerAround()) { a.provokedUntil = 0; return false; }
+    if (moveToward(a, player.x, player.y, e.speed * pv.charge * SQ3, dt) === "blocked") a.moving = false;   // at the edge of its terrain: it waits there
+    if (Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y)) < Math.max(0.5, (pv.reach || 0) * SQ3)) killPlayer(pv.kills);
+    return true;
+  }
+  if (!playerAround() || sizeOf(a) < 0.8) { a.playerClose = false; return false; }
+  const d = Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y));
+  if (d > pv.radius * SQ3 * 1.3) { a.playerClose = false; return false; }   // far enough: the next approach counts again
+  if (d >= pv.radius * SQ3 || a.playerClose) return false;
+  a.playerClose = true;
+  const next = player.route[player.route.length - 1];   // where the character is going: it has to be heading for the animal
+  if (!next || Math.hypot(...wrapDelta(next.x - a.x, next.y - a.y)) >= d) return false;   // passing by, or it came to the character
+  if (gameDay() - (a.annoyedAt || -1) < APPROACH_GAP / DAY_DURATION) return false;          // the same visit, wandering in and out
+  a.annoyedAt = gameDay();
+  if (a.annoyedDay !== clock.day) { a.annoyedDay = clock.day; a.annoyed = 0; }
+  a.annoyed++;
+  if (a.annoyed >= pv.times) {
+    a.annoyed = 0; a.evade = null; a.charge = null; a.chaseTarget = null; a.eating = 0;
+    a.provokedUntil = gameDay() + PROVOKED_SECONDS / DAY_DURATION;
+    notify(pv.attacks);
+    return true;
+  }
+  if (a.annoyed === pv.times - 1) notify(pv.warn);
+  return false;
 }
 function fireNear(x, y, margin = 0) {               // fire that protects that point (for predators)
   for (const [lx, ly, , pr] of world.lightsCache || []) {

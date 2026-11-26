@@ -40,8 +40,11 @@ function watchFireForWorkshop() {                      // recipes made next to a
 const WORKSHOP_GROUPS = [["fire", "campfire", "Fire"], ["crafts", "craftsGroup", "Crafts"], ["tools", "toolsGroup", "Tools"], ["capture", "cage", "Capture"], ["construction", "house", "Construction"]];
 const APPEAR_MS = 700;                                  // a new rung's animation
 const groupAppearedAt = {};
-const recipeShown = r => !(r.container && upgrades.has(r.id)) && (world.testMap || known.has(r.id) || hasMaterials(r));
-const buildShown = id => world.testMap || known.has(id) || canBuild(id);
+const recipeShown = r => !(r.container && upgrades.has(r.id)) && (world.testMap || known.has(r.id) || learned(r) && hasMaterials(r));
+const buildShown = id => world.testMap || known.has(id) || learned(BUILDS[id]) && hasMaterials(BUILDS[id]);
+const whyNot = r => !learned(r) ? `\n(first make: ${toLearn(r).map(nameOf).join(", ")})` : !hasTool(r) ? `\n(carry ${orList(r.tools)})`
+  : !hasMaterials(r) ? "\n(missing materials)" : r.needsFire && !nearFire() ? "\n(go next to a lit campfire or bonfire)" : "";
+const needsText = r => (r.requires ? `\nLearned from: ${r.requires.map(nameOf).join(", ")}` : "") + (r.tools ? `\nTool: ${orList(r.tools)}` : "");
 function dropLadder() {                                 // (re)plays the ladder falling from the clock
   for (const g in groupAppearedAt) delete groupAppearedAt[g];
   const el = $("workshop"); el.classList.remove("dropping"); void el.offsetWidth; el.classList.add("dropping");
@@ -52,13 +55,13 @@ function renderWorkshop() {                             // one rung per group; o
     const expanded = workshopOpen === g;
     const buildIds = Object.keys(BUILDS).filter(id => (BUILDS[id].group || "construction") === g && buildShown(id));
     const buildButtons = buildIds.map(id => `<button class="slot recipe ${canBuild(id) ? "ready" : ""} ${buildMode === id ? "building" : ""}" data-build="${id}"
-            title="${BUILDS[id].name} — ${recipeText(BUILDS[id])}\n${BUILDS[id].text}">${RECIPE_ICON[id]}</button>`);   // builds: the next click on the world chooses where
+            title="${BUILDS[id].name} — ${recipeText(BUILDS[id])}\n${BUILDS[id].text}${needsText(BUILDS[id])}${canBuild(id) ? "" : whyNot(BUILDS[id])}">${RECIPE_ICON[id]}</button>`);   // builds: the next click on the world chooses where
     const recipes = RECIPES.filter(r => r.group === g && recipeShown(r));
     const anyReady = recipes.some(canMake) || buildIds.some(canBuild);
     const options = recipes.map(r => {
       const ok = canMake(r);
       return `<button class="slot recipe ${ok ? "ready" : ""} ${buildMode === r.id ? "building" : ""}" data-recipe="${r.id}"
-                  title="${r.name} — ${recipeText(r)}${r.needsFire ? " (next to a lit fire)" : ""}\n${r.text}${ok ? "" : hasMaterials(r) ? "\n(go next to a lit campfire or bonfire)" : "\n(missing materials)"}">${RECIPE_ICON[r.id]}</button>`;
+                  title="${r.name} — ${recipeText(r)}${r.needsFire ? " (next to a lit fire)" : ""}\n${r.text}${needsText(r)}${ok ? "" : whyNot(r)}">${RECIPE_ICON[r.id]}</button>`;
     }).concat(buildButtons);
     if (!options.length) continue;                    // nothing to show yet: no rung
     groupAppearedAt[g] ??= now;
@@ -67,5 +70,8 @@ function renderWorkshop() {                             // one rung per group; o
         title="${name}${anyReady ? "" : " (missing materials)"}">${RECIPE_ICON[icon]}</button>` +
       (expanded ? `<div class="dropdown">${options.join("")}</div>` : "") + `</div>`);
   }
-  $("workshop").innerHTML = rows.join("") + `<div class="rung-end"></div>`;
+  const el = $("workshop"), wasEmpty = el.classList.contains("empty");
+  el.classList.toggle("empty", !rows.length);                   // no rung yet: the ladder is not there at all
+  el.innerHTML = rows.length ? rows.join("") + `<div class="rung-end"></div>` : "";
+  if (wasEmpty && rows.length) { el.classList.remove("dropping"); void el.offsetWidth; el.classList.add("dropping"); }   // the first rung: the ladder drops down
 }
