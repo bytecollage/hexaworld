@@ -3,8 +3,12 @@ const an = (w, A = "a") => (/^[aeiou]/i.test(w) ? (A === "A" ? "An " : "an ") : 
 // moments with several things the character may say: one is picked at random each time (notify(SAY.enterHouse))
 const SAY = {
   enterHouse:  ["Home sweet home", "I feel safe here", "This is my place", "I can get some rest now"],
+  hutDone:     ["My hut is ready: tonight I sleep safe", "A little hut of my own", "Branches and thatch: my hut is done"],
+  enterHut:    ["Safe in my hut", "Nothing can get me in here", "A good place to spend the night"],
   houseDone:   ["My house is finished!", "A roof over my head, at last", "Home, finally!"],
   chestDone:   ["A place to keep my things", "Now my things have a home", "This chest will be handy"],
+  fireSpread:  ["The fire caught the plants next to it!", "Sparks from the fire: the grass is burning!", "I put the fire too close to the plants…"],
+  fireStarted: ["It caught fire! I should get away", "The fire is spreading…", "Fire! The animals are running"],
   basketDone:  ["Now I can carry more things", "This basket will help a lot", "More room for my things"],
   sleep:       ["Time to rest…", "Good night…", "My eyes are closing…"],
   wakeUp:      ["Good morning! I slept well", "What a night! I feel rested", "A new day begins"],

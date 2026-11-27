@@ -5,6 +5,7 @@ defineFlora({
   chart: "Bushes",
   plantable: true,
   sapling: { icon: "🌿", name: "Bush sapling", fuel: 0.04 },
+  strip: { gives: "branches", amount: 1, time: 1.5, rest: 1 },   // knife: a branch cut from it (again after a day)
   harvest: { gives: "berries", time: 1.5, ready: o => o.fruit > 0, amount: o => o.fruit, take: o => { o.fruit = 0; } },   // the bush stays
   berries: { perSeason: 4, withoutBees: 2 },        // fruit at the start of spring and summer (fewer without bees nearby); lost in autumn
   food: { from: "fruit", preference: 2 },           // animals eat its fruit one by one

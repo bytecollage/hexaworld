@@ -21,7 +21,7 @@ const CONTENT = [
   // ---- world features
   "world/nest.js", "world/burrow.js", "world/rockMound.js", "world/monolith.js",
   // ---- structures
-  "structures/campfire.js", "structures/bonfire.js", "structures/trap.js", "structures/cage.js", "structures/fence.js", "structures/gate.js", "structures/chest.js", "structures/house.js",
+  "structures/campfire.js", "structures/bonfire.js", "structures/trap.js", "structures/cage.js", "structures/fence.js", "structures/gate.js", "structures/chest.js", "structures/house.js", "structures/hut.js",
 ];
 // Classic scripts written during parsing run in order, before main.js (this works when opening index.html from disk).
 for (const f of CONTENT) document.write(`<script src="content/${f}"><\/script>`);

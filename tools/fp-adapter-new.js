@@ -1,4 +1,5 @@
 // Fingerprint adapter for the refactored English code. Dev tool only.
+const FP_RADIUS = 100;                              // normal maps of the baselines: fixed, whatever the game's default size is
 const FP = {
   world: () => ({ cells: world.cells, animals: world.animals.filter(a => !a.toRemove).map(a => ({ type: a.type, dead: !!a.dead, x: a.x, y: a.y })) }),
   terrains: () => TERRAINS,
@@ -8,6 +9,6 @@ const FP = {
   stats: () => ({ deaths: world.deaths, born: world.bornCount, arrived: world.arrived, hunts: world.hunts, misses: world.misses,
                   births: world.births, migrations: world.migrations, seeds: world.seeds, eggsEaten: world.eggsEaten,
                   immigrants: world.immigrants }),
-  newWorld(seed, test) { world.testMap = test; world.N = test ? TEST_RADIUS : RADIUS_MIN; world.seed = seed; generate(); },
+  newWorld(seed, test) { world.testMap = test; world.N = test ? TEST_RADIUS : FP_RADIUS; world.seed = seed; generate(); },
   simulate: days => simulate(days),
 };

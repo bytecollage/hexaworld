@@ -1,6 +1,7 @@
 // Turtles: Lives on beaches and at sea (deeper as it grows); lays nests on the beach in summer.
 defineFauna({
   id: "turtle",
+  tags: ["catchable"],
   name: { one: "Turtle", many: "Turtles" },
   // on land they stay within 3 cells of water; at sea, the bigger they are the deeper they can go
   zone: i => !blocked(i) && world.toWater[i] <= 3, step: 1.5, speed: 0.35, wait: [4, 14],
@@ -24,7 +25,8 @@ defineFauna({
   },
   nightRest: "beach",                               // at night at the edge of the beach (adults also in the water)
   swimSpeed: 3,                                     // three times faster in the water
-  grab: { meat: a => sizeOf(a) >= 1 ? 3 : 1 },     // the character catches it by hand, as meat
+  grab: { meat: a => sizeOf(a) >= 1 ? 3 : 1 },     // caught by hand: alive, or as meat with the knife in the hand
+  live: { icon: "🐢", name: "Live turtle", diet: ["fruit", "berries", "flowers"], needs: { thirst: 2, hunger: 2, dies: 10 } },
   draw(it) {                    // shell seen in perspective, head toward where it goes; grows with age
     const a = it.a, d = a.dir, f = sizeOf(a) * 1.25, step = a.moving ? Math.sin(a.phase * 6) * 0.05 * f : 0;
     const swims = isWater(terrain(idxAt(it.x, it.y)));

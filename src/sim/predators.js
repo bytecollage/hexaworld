@@ -27,6 +27,8 @@ function updatePredator(a, dt) {
   a.hunger += dt / DAY_DURATION / c.cycle * (seasonIndex() === 3 ? 1.2 : 1);
   if (a.hunger >= 1.5) a.strongHunger = nowDay;        // predators: going hungry prevents breeding
   if (nowDay - a.lastMeal >= c.dies) return die("hunger");
+  if (a.attacksPlayer) { attackPlayer(a, e, dt); return; }   // struggle.js: once it has bitten the character it does not give up, fire or not
+  if (a.grip) { holdPrey(a, e, dt); return; }          // holding a prey: biting it until it dies or tears free
   if (a.eating > 0) { a.eating -= dt; a.moving = false; if (a.eating <= 0) a.restsUntil = nowDay + c.restTime; return; }
   if (e.grows && sizeOf(a) < 0.8 && a.mother && !a.mother.dead && !a.mother.toRemove) {   // young: with their mother, they eat from her preys
     const m = a.mother, [dx, dy] = wrapDelta(m.x - a.x, m.y - a.y), d = Math.hypot(dx, dy);
@@ -38,6 +40,7 @@ function updatePredator(a, dt) {
   const f = fireNear(a.x, a.y, 0.5);                   // fire keeps them away: they move off
   if (f) {
     const [dx, dy] = wrapDelta(a.x - f[0], a.y - f[1]), d = Math.hypot(dx, dy) || 1;
+    if (a.house && fireNear(a.house.x, a.house.y, 0.5)) a.house = { x: a.x + dx / d * 4, y: a.y + dy / d * 4 };   // its home is in the light: a new one (else it comes back forever)
     a.chaseTarget = null; a.sprintSince = 0;
     if (e.flies) flyTo(a, a.x + dx / d * 3, a.y + dy / d * 3, e.speed * SQ3, dt, 1);
     else if (moveToward(a, a.x + dx / d * 3, a.y + dy / d * 3, e.speed * SQ3 * 1.5, dt) === "blocked") a.moving = false;
@@ -70,11 +73,15 @@ function evading(a, e, dt) {
     a.evade = null; a.moving = false; a.wait = e.wait[0];   // it stops there a while
   }
 }
-// nearPlayer: { retreat, watch, says }: within `retreat` reference cells it trots off; within `watch` (when it is not
-// hungry) it stands still facing the character. A hungry predator does not stop to watch.
+// nearPlayer: { retreat, watch, says, attacksClose }: within `watch` reference cells (when it is not hungry) it stands
+// still facing the character, which can walk away freely. Within `retreat` it trots off; or, with `attacksClose`, coming
+// that close to it makes it attack (charge, then the struggle). A hungry predator does not stop to watch.
 function reactToPlayerAsPredator(a, e, dt) {
   if (!playerAround() || sizeOf(a) < 0.8) { a.watchesPlayer = false; return false; }
   const np = e.nearPlayer, d = Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y));
+  const next = player.route[player.route.length - 1];
+  const approaching = a.watchesPlayer || (next && Math.hypot(...wrapDelta(next.x - a.x, next.y - a.y)) < d);   // the character came to it
+  if (d < np.retreat * SQ3 && np.attacksClose && e.provoke && approaching) { a.watchesPlayer = false; provokeNow(a, e); return true; }   // too close: it attacks
   if (d < np.retreat * SQ3) {
     a.watchesPlayer = false;
     const ok = evadeFrom(a, player.x, player.y, (np.retreat + 2.5) * SQ3, np.pace ?? 1, 8);
@@ -113,10 +120,20 @@ function chaseOff(a, e, dt) {
   }
   return false;
 }
+function newPerch(a) {                                 // the nearest standing tree (not in a fire's light) becomes its home
+  let best = null, bd = 15 * SQ3;
+  for (const o of world.trees) {
+    if (o.removed || o.fellAt !== undefined || o.onFire) continue;
+    const [x, y] = toPixel(...world.cells[o.i]), d = Math.hypot(...wrapDelta(x - a.x, y - a.y));
+    if (d < bd && !fireNear(x, y, 0.5)) { bd = d; best = [x, y]; }
+  }
+  if (best) a.house = { x: best[0], y: best[1] }; else a.perchless = true;   // none around: it stays where it is
+}
 function rest(a, e, dt, isActive) {                    // not hungry or outside its hours: at home or strolling nearby
   const nowDay = gameDay(), house = a.house;
   if (e.flies) {
     const perch = e.hunt?.perch ?? 0.5;
+    if (perch > 0 && !a.perchless && !treeAt(idxAt(house.x, house.y))) newPerch(a);   // its tree is gone (felled, burnt): another one
     if (!isActive) { flyTo(a, house.x, house.y, e.speed * SQ3, dt, perch); if (!a.moving) a.alt = perch; return; }   // perched on its tree (gulls: on the beach)
     const R = (e.hunt?.soar ?? 2.5) * SQ3;                                                                     // flies in circles over its home
     a.turn = (a.turn ?? rnd() * TAU) + dt * 0.3 / R * (a.sem % 2 ? 1 : -1);
@@ -147,7 +164,7 @@ function choosePrey(a, e) {
   const c = e.hunt, max = c.view * SQ3;
   let best = null, mv = Infinity;
   for (const p of world.animals) {
-    if (!c.preys.has(p.type) || !visibleTo(p, a)) continue;
+    if (!c.preys.has(p.type) || !visibleTo(p, a) || heldNow(p)) continue;   // not one another predator is holding
     if (c.onlyWeak?.has(p.type) && !weak(p)) continue;
     if (c.hungryBig && BIG.has(p.type) && !weak(p) && a.hunger < 1.5) continue;
     if (fireNear(p.x, p.y)) continue;                  // next to a fire, preys are safe
@@ -216,14 +233,14 @@ function pursue(a, e, dt) {
     const prob = Math.min(0.95, c.success * (p.isNest ? 3 : weak(p) ? 1.8 : 1) * (still(p) && covered === 1 ? 1.4 : 1) * covered *
                                 (p.isNest ? 1 : SPECIES[p.type].defense ?? 1));
     a.chaseTarget = null; a.sprintSince = 0;
-    if (rnd() < prob) eatPrey(a, p);
+    if (rnd() < prob) { if (c.struggle && !p.isNest) grip(a, p); else eatPrey(a, p); }   // jaguar: it grabs it and the struggle begins
     else { a.restsUntil = nowDay + 0.03; world.misses = (world.misses || 0) + 1; }
   }
 }
 function ambush(a, e, dt) {                           // caiman and heron: still, lying in wait; they attack whatever passes within reach
   const c = e.hunt, nowDay = gameDay();
   for (const p of world.animals) {
-    if (!c.preys.has(p.type) || !visibleTo(p, a) || distA(a, p) > c.attackRadius * SQ3) continue;
+    if (!c.preys.has(p.type) || !visibleTo(p, a) || heldNow(p) || distA(a, p) > c.attackRadius * SQ3) continue;
     if (c.onlyWeak?.has(p.type) && !weak(p)) continue;
     if (fireNear(p.x, p.y)) continue;
     const i = idxAt(p.x, p.y);
@@ -231,7 +248,7 @@ function ambush(a, e, dt) {                           // caiman and heron: still
     if ((p.lastAttack || 0) > nowDay - 0.05) continue;
     p.lastAttack = nowDay;
     const [dx, dy] = wrapDelta(p.x - a.x, p.y - a.y); a.dir = Math.atan2(dy, dx);
-    if (rnd() < c.success * (weak(p) ? 1.6 : 1) * (SPECIES[p.type].defense ?? 1)) eatPrey(a, p);
+    if (rnd() < c.success * (weak(p) ? 1.6 : 1) * (SPECIES[p.type].defense ?? 1)) { if (c.struggle) grip(a, p); else eatPrey(a, p); }   // caiman: it grabs it
     else { world.misses = (world.misses || 0) + 1; if (!p.toRemove) fleeFrom(p, SPECIES[p.type], [dx, dy], a); }
     return;
   }

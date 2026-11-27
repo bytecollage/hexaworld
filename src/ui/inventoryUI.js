@@ -1,50 +1,42 @@
-// ---- drag and drop: containers (house, chest, basket: see containers.js) <-> inventory <-> hand
+// ---- drag and drop: containers (house, chest: see containers.js) <-> inventory (with the basket's slots) <-> hand
 let dragging = false;
 const readSlot = (z, k) => z === "hand" ? hand.item : zoneList(z)?.[k] ?? null;
 function writeSlot(z, k, v) {
   if (z === "hand") { hand.item = v; if (v?.type === "torch" && hand.torchLeft <= 0) hand.torchLeft = TORCH_DURATION; }
   else zoneList(z)[k] = v;
 }
-function moveBetween(a, b) {                           // drops a onto b: they merge if they are the same type; otherwise they swap
+const capZ = z => z === "hand" ? STACK_LIMIT.inventory : capOf(zoneList(z));
+function moveBetween(a, b) {                           // drops a onto b: the same type piles up to b's limit; otherwise they swap (if both fit)
   if (a.z === b.z && a.k === b.k) return;
   const A = readSlot(a.z, a.k), B = readSlot(b.z, b.k);
   if (!A) return;
-  if (B && B.type === A.type && A.type !== "jar") {
-    if (A.living || B.living) { B.living = [...(B.living || []), ...(A.living || [])]; B.amount = B.living.length; }
-    else B.amount += A.amount;
-    B.wear = Math.max(B.wear || 0, A.wear || 0);
-    writeSlot(a.z, a.k, null);
-  } else { writeSlot(b.z, b.k, A); writeSlot(a.z, a.k, B); }
-  mergeSame(inventory); for (const z of openZones()) mergeSame(zoneList(z));
+  const capA = capZ(a.z), capB = capZ(b.z);
+  if (B && B.type === A.type && !single(A) && !single(B)) {
+    const m = Math.min(A.amount, capB - B.amount);
+    if (m <= 0) { notify("That slot is full"); return; }
+    B.amount += m; A.amount -= m; B.wear = Math.max(B.wear || 0, A.wear || 0);
+    if (!A.amount) writeSlot(a.z, a.k, null);
+  } else if (!B) {
+    if (A.amount > capB) { writeSlot(b.z, b.k, { ...A, amount: capB }); A.amount -= capB; }   // only what fits in that slot
+    else { writeSlot(b.z, b.k, A); writeSlot(a.z, a.k, null); }
+  } else if (A.amount <= capB && B.amount <= capA) { writeSlot(b.z, b.k, A); writeSlot(a.z, a.k, B); }
+  else { notify("It does not fit there"); return; }
   if (player.job && (a.z === "hand" || b.z === "hand")) cancelWork("I stopped what I was doing");
   renderInventory(); renderContainers();
 }
-function storeStack(r) {                          // a whole stack into the inventory (merging with its type); false if there is no room
-  const same = inventory.find(x => x && x.type === r.type && r.type !== "jar");
-  if (same) { if (r.living || same.living) { same.living = [...(same.living || []), ...(r.living || [])]; same.amount = same.living.length; } else same.amount += r.amount;
-              same.wear = Math.max(same.wear || 0, r.wear || 0); renderInventory(); return true; }
-  const k = inventory.indexOf(null); if (k < 0) return false;
-  inventory[k] = r; renderInventory(); return true;
-}
-function mergeSame(list) {                       // one stack per type (jars go one by one, each with its water)
-  list.forEach((r, k) => {
-    if (!r || r.type === "jar") return;
-    const k0 = list.findIndex(x => x && x.type === r.type);
-    if (k0 >= k) return;
-    const B = list[k0];
-    if (r.living || B.living) { B.living = [...(B.living || []), ...(r.living || [])]; B.amount = B.living.length; } else B.amount += r.amount;
-    B.wear = Math.max(B.wear || 0, r.wear || 0);
-    list[k] = null;
-  });
+function storeStack(r) {                          // a whole stack into the inventory (piling up with its type); false if not all of it fits (r keeps the rest)
+  const left = addStack(inventory, r); renderInventory(); return !left;
 }
 function quickMove(z, k) {                          // double click: to the other side (a container -> inventory; inventory -> the open container)
   const A = readSlot(z, k); if (!A) return;
-  const to = z === "inv" || z === "hand" ? openZones().filter(x => x !== "basket")[0] ?? (basketOpen ? "basket" : null) : "inv";
+  const to = z === "inv" || z === "hand" ? openZones()[0] ?? null : "inv";
   if (!to) return;
-  const al = zoneList(to), destination = al.findIndex(r => r && r.type === A.type && A.type !== "jar"), free = al.findIndex(r => !r);
-  const k2 = destination >= 0 ? destination : free;
-  if (k2 < 0) { notify(to === "inv" ? "My hands are full: no room left" : "It is full"); return; }
-  moveBetween({ z, k }, { z: to, k: k2 });
+  const moving = { ...A, living: A.living && [...A.living] }, left = addStack(zoneList(to), moving, capZ(to));
+  const placed = A.amount - (left ? left.amount : 0);
+  if (!placed) { notify(to === "inv" ? "My hands are full: no room left" : "It is full"); return; }
+  if (left) { A.amount = left.amount; if (A.living) A.living = left.living; } else writeSlot(z, k, null);
+  if (player.job && z === "hand") cancelWork("I stopped what I was doing");
+  renderInventory(); renderContainers();
 }
 const DRAG_SLOTS = "#inventory .slot:not(.basketButton), #containers .slot:not(.placeholder)";
 const slotZone = el => el.dataset.zone || (el.dataset.hand ? "hand" : "inv");
@@ -74,7 +66,10 @@ document.addEventListener("pointerup", e => {
   if (!a?.isActive) return;
   a.f.remove(); dragging = false; clearOver(); ignoreClick = true;   // the click that follows the drop does not count
   const over = slotUnder(e.clientX, e.clientY);
-  if (over) moveBetween(a.fromCell, slotData(over)); else { renderInventory(); renderContainers(); }
+  if (over) moveBetween(a.fromCell, slotData(over));
+  else if (document.elementFromPoint(e.clientX, e.clientY) === canvas) {   // dropped on the map: placed or left there (actions.js)
+    const b = canvas.getBoundingClientRect(); dropOnWorld(a.fromCell, e.clientX - b.left, e.clientY - b.top);
+  } else { renderInventory(); renderContainers(); }
 });
 document.addEventListener("click", e => { if (ignoreClick) { ignoreClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
 document.addEventListener("dblclick", e => {
@@ -83,14 +78,22 @@ document.addEventListener("dblclick", e => {
 });
 function renderInventory() {                         // the first slot (against the edge) is what is carried in the hand
   if (dragging) return;                            // do not re-render while dragging
-  const icon = t => ICONS[t] || RECIPE_ICON[t] || "?";
+  const icon = t => animalIconHTML(t) || ICONS[t] || RECIPE_ICON[t] || "?";   // live animals: their map drawing
   const t = inHand(), flame = t === "torch" ? `<span class="flame" style="width:${Math.round(44 * Math.max(0, hand.torchLeft) / TORCH_DURATION)}px"></span>` : "";
   const handSlot = `<div class="slot hand ${t ? "filled" : ""}" data-hand="1" data-full="${t ? 1 : 0}"
       title="${t ? `In hand: ${RESOURCE_NAME[t]} · click: put away` : "Empty hand · key 1-0: take what is in that slot"}">
-      ${t ? icon(t) : ""}${t && hand.item.amount > 1 ? `<span class="qty">${hand.item.amount}</span>` : ""}${t === "jar" ? `<span class="water">💧${hand.item.water || 0}</span>` : ""}${flame}${wearBar(hand.item)}</div>`;
-  $("inventory").innerHTML = handSlot + `<div class="slotList">` + inventory.map((r, k) => `<div class="slot" data-k="${k}" data-full="${r ? 1 : 0}"
-      title="${r ? `${RESOURCE_NAME[r.type] || r.type}: ${r.amount} · ` : ""}key ${(k + 1) % 10}"><span class="keyHint">${(k + 1) % 10}</span>` +
-      (r ? `${icon(r.type)}<span class="qty">${r.amount}</span>${r.type === "jar" ? `<span class="water">💧${r.water || 0}</span>` : ""}${wearBar(r)}` : "") + `</div>`).join("") + `</div>` +
-    `<button class="slot basketButton" id="basketButton" title="Basket: open or close (Shift)" hidden></button>`;
+      ${t ? icon(t) : ""}${t && hand.item.amount > 1 ? `<span class="qty">${hand.item.amount}</span>` : ""}${t === "jar" ? `<span class="water">💧${hand.item.water || 0}</span>` : ""}${flame}${wearBar(hand.item)}${healthBar(hand.item)}</div>`;
+  const slot = (r, k) => {                          // keys 1-0 for the first 10; the basket's come after them, Ctrl+1…5
+    const inBasket = k >= SLOTS, key = inBasket ? k - SLOTS + 1 : (k + 1) % 10;
+    return `<div class="slot${inBasket ? " basketSlot" : ""}" data-k="${k}" data-full="${r ? 1 : 0}"
+      title="${r ? `${RESOURCE_NAME[r.type] || r.type}: ${r.amount} · ` : ""}${inBasket ? `basket · Ctrl+${key}` : `key ${key}`}"><span class="keyHint">${key}</span>` +
+      (r ? `${icon(r.type)}<span class="qty">${r.amount}</span>${r.type === "jar" ? `<span class="water">💧${r.water || 0}</span>` : ""}${wearBar(r)}${healthBar(r)}` : "") + `</div>`;
+  };
+  const extra = inventory.length > SLOTS ? `<div class="basketSlots">${inventory.slice(SLOTS).map((r, k) => slot(r, SLOTS + k)).join("")}</div>` : "";
+  $("inventory").innerHTML = handSlot + `<div class="slotList">` + inventory.slice(0, SLOTS).map(slot).join("") + extra + `</div>` +
+    `<div class="slot basketButton" id="basketButton" hidden></div>`;
+  const bs = document.querySelector("#inventory .basketSlots");   // the row is centered with the basket's slots: the containers follow
+  document.documentElement.style.setProperty("--inv-shift", bs ? `${-(bs.offsetWidth + 14) / 2}px` : "0px");
+  renderBasketButton();
   renderWorkshop(); renderContainers();
 }

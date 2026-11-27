@@ -3,6 +3,7 @@ defineFlora({
   id: "pine",
   name: "Pine",
   chart: "Pines",
+  strip: { gives: "branches", amount: 2, adultAmount: 3, time: 2, rest: 1 },   // knife: branches cut without felling it (again after a day)
   tree: {
     sway: 0.035,                          // how much it bends with the wind (the grass bends far more)
     life: [300, 500],                               // days (15-25 years)

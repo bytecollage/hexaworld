@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hexaworld</title>
 <link rel="stylesheet" href="css/game.css">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<link rel="icon" href="img/icon-180.png" type="image/png" sizes="180x180">
+<link rel="apple-touch-icon" href="img/icon-180.png">
 </head>
 <body>
 <div class="loading" id="loading"><div class="loadingBox"><div class="loadingHex"></div><div id="loadingText">Loading…</div></div></div>
@@ -28,11 +31,13 @@
   </div>
   <div class="notice" id="notice"></div>
   <div class="workshop" id="workshop"></div>
-  <div class="panel-cage" id="cagePanel"></div>
   <div class="containers" id="containers"></div>
-  <div class="sleeping" id="sleeping">💤 Sleeping in the house… the night goes by quickly</div>
+  <div class="sleeping" id="sleeping">💤 Sleeping… the night goes by quickly</div>
+  <div class="curtain" id="curtain"></div>
+  <div class="hurt" id="hurt"></div>
   <div class="death" id="death"><div class="box-death"><b>You died</b><p id="deathText"></p>
-    <button class="btn" id="restartGame">Start again</button></div></div>
+    <p class="death-hint">What you carried stays where you fell. Your builds, chests and cages keep everything.</p>
+    <button class="btn" id="wakeAfterDeath">Wake up the next day</button></div></div>
   <div class="population" id="population">
     <div class="head"><b>Population</b><span id="populationDay"></span><span class="hint">P to close</span></div>
     <canvas id="populationChart"></canvas>
@@ -53,7 +58,7 @@
       <span class="lbl" id="cellCount"></span>
       <button class="btn" id="newWorld">🎲 New world</button>
       <label class="chk" title="For testing: gathering, crafting, building, chopping and every other job finish instantly"><input type="checkbox" id="fast"> Fast</label>
-      <button class="btn" id="testMap" title="Small map (radius 60) with a single tall grass tuft and 10 deer; the inventory is filled with 500 of each natural resource">🧪 Test map</button>
+      <button class="btn" id="fillInventory" title="For testing: 500 of each natural resource in the inventory, without changing the map">🧪 Fill inventory</button>
     </div>
 
     <div class="group">
@@ -66,7 +71,7 @@
       <label class="chk" title="Key B"><input type="checkbox" id="edge"> Edges</label>
       <label class="chk" title="The camera follows the character (C or the target icon: back to the character)"><input type="checkbox" id="follow" checked> Follow</label>
       <label class="chk" title="Unchecked: walks from cell center to cell center"><input type="checkbox" id="straightLine" checked> Straight line</label>
-      <label class="chk" title="Shows frames per second and the time each frame takes (top right)"><input type="checkbox" id="showFps"> FPS</label>
+      <label class="chk" title="Shows the performance panel (top right): frames per second, how busy the thread is, where the time goes, how many things exist and are drawn, memory"><input type="checkbox" id="showFps"> FPS</label>
     </div>
 
     <div class="group" id="tools">
@@ -113,6 +118,7 @@
 <script src="src/player/gathering.js"></script>
 <script src="src/ui/notice.js"></script>
 <script src="src/ui/loading.js"></script>
+<script src="src/ui/wakeLock.js"></script>
 <script src="src/world/outcrops.js"></script>
 <script src="src/world/cells.js"></script>
 <script src="src/world/placement.js"></script>
@@ -125,11 +131,14 @@
 <script src="src/sim/fauna.js"></script>
 <script src="src/sim/animals.js"></script>
 <script src="src/sim/predators.js"></script>
+<script src="src/sim/struggle.js"></script>
 <script src="src/sim/population.js"></script>
 <script src="src/ui/populationChart.js"></script>
 <script src="src/sim/simulate.js"></script>
+<script src="src/sim/wildfire.js"></script>
 <script src="src/player/crafting.js"></script>
 <script src="src/player/tools.js"></script>
+<script src="src/player/combine.js"></script>
 <script src="src/player/actions.js"></script>
 <script src="src/player/work.js"></script>
 <script src="src/player/capture.js"></script>
@@ -140,12 +149,14 @@
 <script src="src/render/camera.js"></script>
 <script src="src/render/scene.js"></script>
 <script src="src/render/primitives.js"></script>
+<script src="src/render/animalIcons.js"></script>
 <script src="src/render/characterDraw.js"></script>
 <script src="src/ui/minimap.js"></script>
 <script src="src/player/character.js"></script>
 <script src="src/world/time.js"></script>
 <script src="src/player/durability.js"></script>
 <script src="src/ui/clock.js"></script>
+<script src="src/ui/perf.js"></script>
 <script src="src/loop.js"></script>
 <script src="src/ui/input.js"></script>
 <script src="content/registry.js"></script>

@@ -7,6 +7,7 @@ defineItem({
   layer: "low",
   movedByHouse: true,
   harvest: { gives: "pineCone", time: 0.5, amount: () => 1, remove: true },
+  useWith: { torch: { take: 2, gives: "resin", amount: 1, time: 2 } },   // Ctrl+click with the torch in the hand: melted into resin
   sprouts: { plant: "pine", ground: "grass", chance: 1 },
   draw(it) {                       // a pine cone lying on the ground: a tapering body covered in a diagonal lattice of woody scales
     const p = it.p, scl = cam.zoom * p[2], tall = scl * Math.max(Math.sin(cam.tilt * Math.PI / 180), 0.45);

@@ -10,15 +10,26 @@ function generate() {
   world.neighbors = world.cells.map(([q, r]) => DIRS.map(([dq, dr]) => idx(q + dq, r + dr)));
   world.nbFlat = null;
 
-  // --- shape: continent in the center + two islands in open sea
-  const coarse = smoothNoise(1, 10), fine = smoothNoise(2, 3);
+  // --- shape: a big continent (about half to two thirds of the map), the sea as a ring around it (it never reaches the
+  //     map's edge, so the sea stays one body of water around the wrapping world) and two islands out in that ring, each
+  //     joined to the continent by a shelf of shallow water that can be waded across
+  const coarse = smoothNoise(1, 10), fine = smoothNoise(2, 3), edge = smoothNoise(7, 6);
   const center = idx(0, 0);
   const a1 = hash(1, 70) * TAU, a2 = a1 + Math.PI * (0.55 + 0.9 * hash(2, 70));
-  const islands = [a1, a2].map(a => idxAt(Math.cos(a) * N * 0.8 * SQ3 * CELL_R, Math.sin(a) * N * 0.8 * SQ3 * CELL_R));
-  const Rc = N * 0.52, Ri = Math.max(cellsFor(4), N * 0.07);   // in grid steps, like wrapDistance
+  const angleOf = i => { const [x, y] = toPixel(...world.cells[i]); return Math.atan2(y, x); };
+  const turn = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  const ring = []; for (let i = 0; i < n; i++) { const d = wrapDistance(i, center); if (d >= N * 0.9 && d <= N * 0.94) ring.push(i); }
+  const nearest = (cells, a) => cells.reduce((b, i) => turn(angleOf(i), a) < turn(angleOf(b), a) ? i : b, cells[0]);
+  const first = nearest(ring, a1), far = Math.max(...ring.map(i => wrapDistance(i, first)));
+  const islands = [first, nearest(ring.filter(i => wrapDistance(i, first) >= far * 0.8), a2)];   // the world wraps: keep them apart both ways
+  const size = 0.9 + 0.1 * hash(3, 70);               // each world its own: the land covers about half to two thirds of the map
+  const Rc = N * 0.8 * size, Ri = Math.max(cellsFor(4), N * 0.07), strait = cellsFor(3);   // in grid steps, like wrapDistance
   const val = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    const vc = 1 - wrapDistance(i, center) / Rc + (coarse[i] - 0.5) * 1.1 + (fine[i] - 0.5) * 0.3;
+    const [x, y] = toPixel(...world.cells[i]), d = Math.hypot(x, y) / (SQ3 * CELL_R);   // round, not hexagonal (in grid steps)
+    let vc = 1 - d / Rc + (coarse[i] - 0.5) * 0.6 + (fine[i] - 0.5) * 0.3;
+    vc = Math.min(vc, (N * (0.64 + 0.16 * edge[i]) * size - d) / (N * 0.05));          // short of the map's edge (0.87 N at its nearest)
+    for (const c of islands) vc = Math.min(vc, (wrapDistance(i, c) - Ri * 1.3 - strait) / strait);   // a strait before each island
     const vi = Math.max(...islands.map(c => 1 - wrapDistance(i, c) / Ri + (fine[i] - 0.5) * 0.6));
     val[i] = Math.max(vc, vi);
   }
@@ -35,10 +46,20 @@ function generate() {
                          return +Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]; })();
   // distance bands on a hex grid come out as hexagons (long straight edges): a wobble noise bends them
   const wobble = smoothNoise(6, 0.6), seaSteps = stepDistances(i => isLand[i]);
+  // the shelf to each island: sea cells whose way continent → cell → island is at most a little longer than the shortest
+  // crossing (the shortest crossing itself always is, so there is always a wadeable path)
+  const toContinent = stepDistances(i => isLand[i] && comp[i] === comp[center]);
+  const shelf = new Uint8Array(n);
+  for (const c of islands) {
+    if (comp[c] === comp[center]) continue;
+    const toIsland = stepDistances(i => isLand[i] && comp[i] === comp[c]);
+    let shortest = Infinity; for (let i = 0; i < n; i++) if (!isLand[i]) shortest = Math.min(shortest, toContinent[i] + toIsland[i]);
+    for (let i = 0; i < n; i++) if (!isLand[i] && toContinent[i] + toIsland[i] <= shortest + cellsFor(1.5) + wobble[i] * cellsFor(2.5)) shelf[i] = 1;
+  }
   world.base = Array.from({ length: n }, (_, i) => {
     if (isLand[i]) return toWater[i] === 1 || (toWater[i] === 2 && fine[i] > 0.6) ? "sand" : "grass";
     const d = seaSteps[i] / CELL_SCALE + (wobble[i] - 0.5) * 3;         // distance to land, in reference cells, bent
-    if (sea[i] !== seaId || toLand[i] <= 1 || d <= 2) return "water";   // lakes and the strip along the coast
+    if (sea[i] !== seaId || toLand[i] <= 1 || d <= 2 || shelf[i]) return "water";   // lakes, the strip along the coast, the shelves
     return d <= 5 + fine[i] * 3 ? "medium" : "deep";                     // then medium depth and, further out to sea, ocean
   });
   if (world.testMap) {                              // test map: a guaranteed lake near the center
@@ -51,6 +72,15 @@ function generate() {
   world.outcropAt = new Int32Array(n).fill(-1);  // cell -> outcrop occupying it (-1: none)
   world.outcrops = [];
   recomputeDistances();
+  if (!world.lake.some(Boolean)) {                   // always a lake (land animals need one to drink, or none are placed):
+    let c = -1;                                      // dug at the land cell farthest from the water
+    for (let i = 0; i < n; i++) if (terrain(i) === "grass" && (c < 0 || world.toWater[i] > world.toWater[c])) c = i;
+    if (c >= 0 && world.toWater[c] >= 3) {
+      const r = Math.min(cellsFor(2), cellsFor(world.toWater[c] - 2));
+      for (const i of cellsAround(c, r)) world.base[i] = "water";
+      recomputeDistances();
+    }
+  }
 
   $("radius").textContent = N;
   $("cellCount").textContent = `${n.toLocaleString("en")} cells`;

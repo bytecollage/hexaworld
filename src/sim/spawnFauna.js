@@ -34,7 +34,8 @@ function spawnSteps() {
 // what a spawn step gets: helpers to find cells and add animals, plus facts about the land shared by many species
 function spawnContext(n) {
   const of = cond => { const l = []; for (let i = 0; i < n; i++) if (cond(i)) l.push(i); return l; };
-  const add = (type, i, jit = 0.6) => {          // animal in cell i with a random age
+  const add = (type, i, jit = 0.6) => {          // animal in cell i with a random age (none if there is no cell: small worlds)
+    if (i === undefined) return null;
     const [x, y] = toPixel(...world.cells[i]), e = SPECIES[type];
     const a = createAnimal(type, x + (rnd() - 0.5) * jit, y + (rnd() - 0.5) * jit);
     if (e.grows) a.born = gameDay() - rnd() * e.grows.days * 2;   // varied ages: roughly half are already adults
@@ -47,8 +48,8 @@ function spawnContext(n) {
   for (let i = 0; i < n; i++) if (world.lakeShore[i] && compD[i] >= 0) withLake.add(compD[i]);
   const ctx = {
     testMap: world.testMap, of, add,
-    pick: l => l[Math.floor(rnd() * l.length)],
-    adult: a => { const e = SPECIES[a.type]; a.born = gameDay() - (e.grows ? e.grows.days * (1 + rnd()) : 10 + rnd() * a.life * 0.5); return a; },
+    pick: l => { const r = rnd(); return l.length ? l[Math.floor(r * l.length)] : undefined; },   // undefined from an empty list
+    adult: a => { if (!a) return a; const e = SPECIES[a.type]; a.born = gameDay() - (e.grows ? e.grows.days * (1 + rnd()) : 10 + rnd() * a.life * 0.5); return a; },
     count: t => world.animals.filter(a => a.type === t).length,
     countTag: tag => idsWithTag(tag).reduce((s, t) => s + ctx.count(t), 0),
     sow: (type, every, cond = SPECIES[type].zone, jit = 1.2) => {      // spread one animal per `every` reference cells that meet cond

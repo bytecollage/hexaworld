@@ -12,14 +12,26 @@ function groundEllipse(x, y, rx, ry, ang = 0, fromCell = 0, until = TAU, n = 14)
 let noShadow = false;                              // when drawing a fallen (rotated) tree its shadow is not drawn
 function shadow(x, y, r) { if (noShadow) return; ctx.beginPath(); groundEllipse(x, y, r, r * 0.8); ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.fill(); }
 // on-screen scale of 1 world unit, and height factor for standing things
+function worldBar(x, y, w, v, color) {                // a small bar over something in the world (captives' health)
+  ctx.fillStyle = "rgba(20,24,28,.75)"; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
+  ctx.fillStyle = color; ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, v)), 4);
+}
 function sizes(it) { const scl = cam.zoom * it.p[2]; return [scl, scl * Math.max(Math.sin(cam.tilt * Math.PI / 180), 0.45)]; }
 function bird(it, c) {              // bird in flight (wings spread across its heading, flapping) or perched; shadow on the ground
   const [scl] = sizes(it), a = it.a, d = a.dir, span = c.wingspan;
   ctx.beginPath(); groundEllipse(it.x, it.y, span * 0.5, span * 0.2, d); ctx.fillStyle = `rgba(0,0,0,${0.06 + 0.12 * (1 - Math.min(1, a.alt || 0))})`; ctx.fill();
   const z = c.altitude * (a.alt || 0) + 0.12, perched = !a.moving && (a.alt || 0) < 0.85;
   const P = (u, v, dz = 0) => bodyPoint(it.x, it.y, d, u, v, z + dz);
+  const eating = perched && a.eating > 0, t = performance.now() / 1000 + (a.sem || 0);
+  const peck = eating ? Math.max(0, Math.sin(t * 7)) : 0;                       // eating: the head goes down to the food and up again
+  const flutter = eating ? Math.max(0, Math.sin(t * 1.3) - 0.8) * 5 : 0;        // …and now and then it half opens its wings
   if (perched) {                                    // folded wings
     ctx.beginPath(); if (bodyEllipsoid(it.x, it.y, d, -span * 0.04, 0, z, span * 0.32, span * 0.09, 0.05)) { ctx.fillStyle = c.wings; ctx.fill(); }
+    if (flutter > 0) for (const side of [1, -1]) {
+      const pts = [P(span * 0.08, 0, 0.02), P(-span * 0.05, side * span * 0.42 * flutter, 0.05 + span * 0.25 * flutter), P(-span * 0.22, side * span * 0.2 * flutter, 0.02)];
+      if (!pts.every(Boolean)) continue;
+      ctx.beginPath(); pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fillStyle = c.wings; ctx.fill();
+    }
   } else {
     const wing = Math.sin(a.phase * c.flap) * 0.45, chord = span * 0.22;          // each wing: leading edge, tip, trailing edge
     for (const side of [1, -1]) {
@@ -31,7 +43,9 @@ function bird(it, c) {              // bird in flight (wings spread across its h
     }
   }
   ctx.beginPath(); if (bodyEllipsoid(it.x, it.y, d, 0, 0, z, span * 0.25, 0.04, 0.035)) { ctx.fillStyle = c.torso; ctx.fill(); }
-  const H = P(span * 0.27, 0, 0.01); if (H) circle(H[0], H[1], Math.max(1, scl * span * 0.1), c.head);
+  const H = P(span * (0.27 + 0.08 * peck), 0, 0.01 - 0.09 * peck), N = P(span * 0.18, 0, 0.02);
+  if (eating && H && N) { ctx.strokeStyle = c.head; ctx.lineWidth = Math.max(1, scl * span * 0.07); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(N[0], N[1]); ctx.lineTo(H[0], H[1]); ctx.stroke(); ctx.lineCap = "butt"; }   // its bare neck
+  if (H) circle(H[0], H[1], Math.max(1, scl * span * 0.1), c.head);
 }
 // a tree that has just sprouted from a seed: a thin stem with two pointed leaves; t 0 … 1 grows it
 function seedling(it, t) {

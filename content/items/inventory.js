@@ -9,7 +9,9 @@ defineItem({ id: "rope", name: "Rope", fuel: 0.03 });   // Rope: twisted grass; 
 defineItem({ id: "sharpStone", name: "Sharp stone" });   // Sharp stone: knapped from 3 stones; the edge of the knife and the axe.
 defineItem({ id: "sharpBone", name: "Sharpened bone" });   // Sharpened bone: a bone ground with a stone; arrow points.
 defineItem({ id: "tannedHide", name: "Tanned hide" });   // Tanned hide: a hide smoked next to a fire; for the bow and the house.
-defineItem({ id: "resin", name: "Resin", fuel: 0.1 });   // Resin: melted from pine cones next to a fire; glue for the arrows.
+defineItem({ id: "resin", name: "Resin", fuel: 0.1 });
+defineItem({ id: "openCoconut", name: "Open coconut", icon: "🥥", fuel: 0.04 });   // Open coconut: a coconut broken with a tool; food (bait, captives) and the jar's material.
+defineItem({ id: "charcoal", name: "Charcoal", fuel: 0.15 });   // Charcoal: what a burnt tree leaves; burns well.   // Resin: melted from pine cones next to a fire; glue for the arrows.
 defineItem({ id: "torch", name: "Torch" });   // Torch: carried lit in the hand for one night.
 defineItem({ id: "knife", name: "Knife" });   // Knife: cuts meat from dead animals and finishes off stunned ones.
 defineItem({ id: "axe", name: "Axe" });   // Axe: chops trees and can be thrown at animals.

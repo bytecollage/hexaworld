@@ -1,6 +1,7 @@
 // Render test scene (dev tool): a frozen world with animals facing 8 directions, fallen trees and a house,
 // seen with the camera turn given in the URL (?rot=45&tilt=55&zoom=70). Used by tools/gallery.sh.
-addEventListener("load", () => setTimeout(() => {
+addEventListener("load", () => setTimeout(async () => {
+  await booted;                                     // the game's own first world is made after the loading screen: wait for it
   const q = new URLSearchParams(location.search);
   updateAnimals = () => {}; lifeCycle = () => {}; updateTrees = () => {}; updateCharacter = () => {};   // freeze everything
   world.testMap = true; world.N = TEST_RADIUS; world.seed = 7; generate();

@@ -1,6 +1,7 @@
 // Frogs: Lives in lakes and on their shore; still at night.
 defineFauna({
   id: "frog",
+  tags: ["catchable"],
   name: { one: "Frog", many: "Frogs" },
   zone: i => world.lake[i] === 1 || (world.lakeShore[i] === 1 && !blocked(i)),   // lake and 1 cell of shore
   step: 0.8, speed: 3, wait: [8, 30],
@@ -15,7 +16,8 @@ defineFauna({
     },
   },
   nightRest: "lake",                                // goes back into the lake and stays still at night
-  grab: { meat: () => 1 },                          // the character catches it by hand, as meat
+  grab: { meat: () => 1 },                          // caught by hand: alive, or as meat with the knife in the hand
+  live: { icon: "🐸", name: "Live frog", diet: ["flowers", "berries"], needs: { thirst: 1, hunger: 1.5, dies: 6 } },
   draw(it) {                       // green body with eyes; hops when moving
     const [scl, tall] = sizes(it), a = it.a;
     const jump = a.moving ? Math.abs(Math.sin(a.phase * 10)) * tall * 0.25 : 0;

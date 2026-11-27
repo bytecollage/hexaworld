@@ -2,6 +2,8 @@
 defineStructure({
   id: "house",
   name: "House",
+  hoverable: true,
+  shelter: { life: 5 * YEAR_DAYS, decayFrom: 4 * YEAR_DAYS, storage: 20, shape: "rect" },   // (out of the build menu until the saw: see BUILDS)
   draw(it) {                       // log house over its 4 cells, taller than the character: walls, thatched gable roof, door, windows, chimney
     const o = it.o, [scl, tall] = sizes(it), occupied = player.inside === o || (player.sleeping && player.house === o);
     // the house lies along the long diagonal of its rhombus of cells: u along it, w across it (world units)
@@ -102,7 +104,6 @@ defineStructure({
     slope(-nearSide);
     if (nearSide === 1) chimney();                                  // the chimney's slope faces away: draw it before the near slope
     slope(nearSide);
-    if (nearSide === -1) chimney();
     for (let k = 0; k < Math.round(decay * 7); k++) {            // holes in the thatch of the near slope
       const u = (hash(o.sem, 800 + k) - 0.5) * 2 * HU, f = 0.2 + hash(o.sem, 820 + k) * 0.6, s = 0.12 + hash(o.sem, 840 + k) * 0.1;
       const W = nearSide * (HW + OVER) * f, z = H + RIDGE - (RIDGE + 0.15) * f, dz = (RIDGE + 0.15) * s / (HW + OVER);
@@ -113,5 +114,6 @@ defineStructure({
     ctx.lineWidth = Math.max(1, scl * 0.03); ctx.strokeStyle = "#c9a66b";
     for (let k = 1; k < 6; k++) { const a = Q(-HU - OVER + (2 * (HU + OVER)) * k / 6 - 0.05, 0, H + RIDGE + 0.05), b = Q(-HU - OVER + (2 * (HU + OVER)) * k / 6 + 0.05, 0, H + RIDGE - 0.05); line(a, b); }
     ctx.lineCap = "butt";
+    if (nearSide === -1) chimney();                                 // the chimney's slope faces the camera: in front of the ridge too
   },
 });

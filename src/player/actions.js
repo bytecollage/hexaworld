@@ -4,18 +4,37 @@ function dropAction(cell) {
   if (cell === undefined || cell < 0 || isWater(terrain(cell)) || world.outcropAt[cell] >= 0) { notify("I cannot leave things there"); return; }
   goAndDo(blockedForPlayer(cell) ? walkableNeighbor(cell) : approachOf([cell]) ?? cell, { type: "drop", i: cell, what: inHand() });
 }
+const placesOnGround = t => t === "trap" || t === "cage" || !!t?.startsWith("sapling_");
+function placeFromHand(cell) {                       // the trap, cage or sapling in the hand goes to that cell (the character goes and does it)
+  const t = inHand();
+  if (!canPlaceAt(cell)) { notify("It will not fit there: I need a free spot"); return; }
+  goAndDo(approachOf([cell]), { type: t.startsWith("sapling_") ? "plantSapling" : "place", i: cell, what: t });
+}
+// an inventory (or container) slot dragged onto the map: traps, cages and saplings are placed there; anything else is dropped there
+function dropOnWorld(from, sx, sy) {
+  if (player.dead || player.sleeping) return;
+  const pk = pickAt(sx, sy); if (!pk) return;
+  const cell = pk.cell ?? idx(...toHex(pk.x, pk.y));
+  if (from.z !== "hand") moveBetween(from, { z: "hand", k: 0 });   // it goes to the hand (what was there takes its slot)
+  if (player.inside && !player.sleeping) leaveHouse();
+  closeContainersExcept(cell);
+  player.task = null; player.repeat = null;
+  if (placesOnGround(inHand()) && !blockedForPlayer(cell)) placeFromHand(cell); else dropAction(cell);
+}
 function clickAction(px, py, cell) {
   const t = inHand();
+  const foe = STRIKE[t] && attackerAt(px, py);          // a predator attacking the character: strike it with the knife or the axe
+  if (foe) { strike(foe, t); return true; }
   if (t === "hammer") {                                                 // dismantle what was built
     const o = world.houseAt.get(cell) || objs(cell).find(o => RECOVERS[o.type]);
-    if (o) { goAndDo(o.type === "house" ? (adjacent(o) ? player.i : doorOf(o)) : approachOf([cell]), { type: "dismantle", o }); return true; }
+    if (o) { goAndDo(DEF[o.type]?.shelter ? (adjacent(o) ? player.i : doorOf(o)) : approachOf([cell]), { type: "dismantle", o }); return true; }
   }
-  if (buildMode === "house") {
-    const h = houseFootprint(cell);
-    if (!h) { notify("My house will not fit there: it needs free ground"); return true; }
+  if (SHELTERS.includes(buildMode)) {                                    // house or hut: over several cells
+    const h = shelterFootprint(buildMode, cell);
+    if (!h) { notify(`My ${BUILDS[buildMode].name.toLowerCase()} will not fit there: it needs free ground`); return true; }
     const fromCell = approachOf(h.cells);
     if (fromCell === undefined) { notify(SAY.noWay); return true; }
-    goAndDo(fromCell, { type: "buildHouseTask", i: cell, h }); return true;
+    goAndDo(fromCell, { type: "buildHouseTask", i: cell, h, what: buildMode }); return true;
   }
   if (buildMode === "fence" || buildMode === "gate") {                  // posts: each click plants one (and joins the nearest)
     const plan = buildMode === "gate" ? { cells: [cell], ok: canPlaceAt(cell) } : fencePlan(cell);
@@ -36,6 +55,10 @@ function clickAction(px, py, cell) {
     if (fromCell === undefined) { notify(SAY.noWay); return true; }
     goAndDo(fromCell, { type: "placeFire", i: cell, what: buildMode }); return true;
   }
+  if (t === "torch") {                                                  // the torch on anything of plant origin: set it on fire
+    const o = flammableAt(cell);
+    if (o) { const fromCell = approachOf([cell]); if (fromCell === undefined) { notify(SAY.noWay); return true; } goAndDo(fromCell, { type: "ignite", i: cell }); return true; }
+  }
   const house = world.houseAt.get(cell);                                   // house: enter (from any of its 4 cells)
   if (house) { goAndDo(adjacent(house) ? player.i : doorOf(house), { type: "enter", o: house }); return true; }
   if (LIVE.has(t) && !blockedForPlayer(cell) && !animalAt(px, py, () => true, 0.6)) {   // release a live animal
@@ -50,10 +73,7 @@ function clickAction(px, py, cell) {
   if (cage) { goAndDo(cell, { type: "openCage", o: cage }); return true; }
   const trap = objs(cell).find(o => o.type === "trap");               // trap: bait it or pick it up
   if (trap) { goAndDo(cell, { type: BAITS.includes(t) && !trap.baitItem && !trap.prey ? "bait" : "pickUpTrap", o: trap }); return true; }
-  if ((t === "trap" || t === "cage" || t?.startsWith("sapling_")) && !blockedForPlayer(cell)) {   // put on the ground / plant, in that cell
-    if (!canPlaceAt(cell)) { notify("It will not fit there: I need a free spot"); return true; }
-    goAndDo(approachOf([cell]), { type: t.startsWith("sapling_") ? "plantSapling" : "place", i: cell, what: t }); return true;
-  }
+  if (placesOnGround(t) && !blockedForPlayer(cell)) { placeFromHand(cell); return true; }   // put on the ground / plant, in that cell
   if (seedOf(t) && canPlaceAt(cell) && !blockedForPlayer(cell) && terrain(cell) === seedOf(t).ground) {   // fruit, pine cone, coconut: sow it there
     goAndDo(approachOf([cell]), { type: "sow", i: cell, what: t }); return true;
   }
@@ -95,14 +115,24 @@ function clickAction(px, py, cell) {
   }
   if (inHand() === "axe") {                        // throw the axe at a nearby animal
     const a = animalAt(px, py, a => HUNTABLE.has(a.type) && !a.dead && !(SPECIES[a.type].needs?.house && a.inShelter), 1.1);
+    if (a && SPECIES[a.type].asTarget?.axeOnLand && isWater(terrain(idxAt(a.x, a.y)))) { notify("It is in the water: my axe would sink. Better the bow"); return true; }
     if (a) {
       if (Math.hypot(...wrapDelta(a.x - player.x, a.y - player.y)) <= 4.5 * SQ3) { throwAxe(a); return true; }
       notify("Too far to throw my axe"); return true;
     }
   }
-  if (inHand() === "knife") {                     // go cut the meat of a dead animal
-    const a = animalAt(px, py, a => a.dead && !a.toRemove, 1.2);
-    if (a) { player.task = { type: "meat", a }; walkTo(idxAt(a.x, a.y)); player.task = { type: "meat", a }; return true; }
+  const dead = animalAt(px, py, a => a.dead && !a.toRemove, 1.2);   // a dead animal: cut its meat with the knife (in the hand or carried)
+  if (dead) {
+    if (amountOf("knife") > 0) { walkTo(idxAt(dead.x, dead.y)); player.task = { type: "meat", a: dead }; return true; }
+    notify("I need a knife to cut its meat");        // it still walks there (the axe may be lying next to it)
+  }
+  if (inHand() === "knife") {                     // a young tree or a bush: cut some branches without felling it
+    const o = stripTarget(cell);
+    if (o) {
+      if (!stripRested(o)) { notify(`I already cut branches from this ${(DEF[o.type].name || o.type).toLowerCase()}: it has to grow back`); return true; }
+      const fromCell = approachOf([cell]); if (fromCell === undefined) { notify(SAY.noWay); return true; }
+      goAndDo(fromCell, { type: "strip", i: cell }); return true;
+    }
   }
   if (inHand() === "axe" && treeAt(cell)) { walkTo(cell); player.task = { type: "chop", i: cell }; return true; }
   const h = objs(cell).find(o => FIRE_TYPES.includes(o.type));         // campfire or bonfire: feed it
@@ -132,12 +162,14 @@ function finishTask() {                            // on arrival: chop, cut meat
   if (t.type === "drop" && (atPlace(t.i) || player.i === t.i)) work("gather", 0.5, () => dropHand(t.what, t.i));
   if (t.type === "sow" && atPlace(t.i)) work("gather", 1, () => sow(t.what, t.i));
   if (t.type === "dig" && atPlace(t.i)) work("gather", 2, () => dig(t.i));
+  if (t.type === "ignite" && atPlace(t.i)) work("build", 1, () => { const o = flammableAt(t.i); if (o && inHand() === "torch") { ignite(o); notify(SAY.fireStarted); } });
+  if (t.type === "strip" && atPlace(t.i)) { const o = stripTarget(t.i); if (o) work("gather", DEF[o.type].strip.time, () => stripNow(t.i)); }
   if (t.type === "mine" && t.y.cells.some(atPlace)) work("chop", 3, () => mine(t.y), { currentTool: "pickaxe" });
   if (t.type === "fill") work("gather", 1, fillJar);
-  if (t.type === "buildHouseTask" && t.h.cells.some(c => world.neighbors[player.i]?.includes(c))) work("build", BUILDS.house.dur, () => buildHouse(t.i), { recipe: "house" });
+  if (t.type === "buildHouseTask" && t.h.cells.some(c => world.neighbors[player.i]?.includes(c))) work("build", BUILDS[t.what || "house"].dur, () => buildShelter(t.what || "house", t.i), { recipe: t.what || "house" });
   if (t.type === "posts" && t.cells.some(atPlace)) work("build", BUILDS[t.what].dur * t.cells.length, () => plantPosts(t.cells, t.what), { recipe: t.what, at: t.cells[t.cells.length - 1] });
   if (t.type === "placeFire" && atPlace(t.i)) work("build", BUILD_DURATION[t.what], () => lightFireAt(t.what, t.i), { recipe: t.what, at: t.i });
   if (t.type === "enter" && adjacent(t.o)) work("gather", 0.4, () => enterHouse(t.o));
-  if (t.type === "dismantle" && (t.o.type === "house" ? adjacent(t.o) : (atPlace(t.o.i) || player.i === t.o.i))) work("chop", DISMANTLE_DURATION[t.o.type], () => dismantle(t.o));
+  if (t.type === "dismantle" && (DEF[t.o.type]?.shelter ? adjacent(t.o) : (atPlace(t.o.i) || player.i === t.o.i))) work("chop", DISMANTLE_DURATION[t.o.type], () => dismantle(t.o));
   if (t.type === "release" && (atPlace(t.i) || player.i === t.i)) work("gather", 0.5, () => releaseAnimal(t.what, t.i));
 }

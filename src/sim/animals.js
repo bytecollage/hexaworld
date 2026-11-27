@@ -9,9 +9,9 @@ function isAdultAnimal(a) {
   const e = SPECIES[a.type];
   return e.grows ? sizeOf(a) >= 1 : ageOf(a) >= (e.breed?.maturity ?? 10);
 }
-function weak(p) {                                     // easy prey: young, old, dying or very hungry
+function weak(p) {                                     // easy prey: young, old, dying, very hungry or wounded
   const e = SPECIES[p.type];
-  return (e.grows && sizeOf(p) < 0.85) || !!p.dyingSince || (p.life && ageOf(p) > p.life * 0.85) || (p.hunger || 0) > 1.5;
+  return (e.grows && sizeOf(p) < 0.85) || !!p.dyingSince || (p.life && ageOf(p) > p.life * 0.85) || (p.hunger || 0) > 1.5 || hpOf(p) < 50;   // or badly wounded
 }
 const still = p => !!(p.inShelter || p.stunnedUntil > gameDay() || p.sleeping || (p.restUntil || 0) > gameDay() || p.dyingSince);
 const posOf = p => p.isNest ? (([x, y]) => [x + p.ox, y + p.oy])(toPixel(...world.cells[p.i])) : [p.x, p.y];

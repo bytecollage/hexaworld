@@ -6,7 +6,8 @@ defineFlora({
   plantable: true,
   movedByHouse: true,
   sapling: { icon: "🌱", name: "Tall grass sapling", fuel: 0.03 },
-  harvest: { gives: "grass", time: 1.5, ready: o => o.food > 0, amount: o => o.food, take: o => { o.food = 0; o.regrowAt = gameDay() + REGROW_DAYS; world.regrowths.push({ o, at: o.regrowAt }); } },   // cut; it regrows
+  harvest: { gives: "grass", time: 1.5, knife: { more: 2, faster: 0.5 },   // with the knife in the hand: double the grass, in half the time
+              ready: o => o.food > 0, amount: o => o.food, take: o => { o.food = 0; o.regrowAt = gameDay() + REGROW_DAYS; world.regrowths.push({ o, at: o.regrowAt }); } },   // cut; it regrows
   food: { units: 5, preference: 4, overgrazing: true },   // dies if eaten down to 0 eight times in a year
   driesInWinter: 0.05,                              // share of tufts that dry up each winter
   spreads: 0.06,                                    // share of tufts that sprout in a neighboring meadow cell each spring

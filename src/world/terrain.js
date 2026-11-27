@@ -1,5 +1,5 @@
 // =====================================================================================
-//  TERRAIN: continent + sea + two small islands
+//  TERRAIN: a big continent + sea + two small islands joined to it by shallow water
 // =====================================================================================
 // shallow water (wadeable) → medium depth → ocean
 const TERRAINS = ["deep", "medium", "water", "sand", "grass"];

@@ -3,6 +3,7 @@ defineFlora({
   id: "fruitTree",
   name: "Fruit tree",
   chart: "Fruit trees",
+  strip: { gives: "branches", amount: 2, adultAmount: 3, time: 2, rest: 1 },   // knife: branches cut without felling it (again after a day)
   tree: {
     sway: 0.03,                          // how much it bends with the wind (the grass bends far more)
     life: [160, 280],                               // days (8-14 years)

@@ -46,6 +46,7 @@
 
   window.addEventListener("load", () => setTimeout(async () => {
     let text;
+    await booted;                                   // the game's own first world is made after the loading screen: wait for it
     try { if (window.__errors && window.__errors.length) throw new Error("load errors: " + window.__errors.join(" | ")); text = JSON.stringify(await run()); } catch (e) { text = "FP_ERROR " + (e && e.stack || e); }
     const pre = document.createElement("pre"); pre.id = "fp-out"; pre.textContent = text;
     document.body.appendChild(pre); document.title = "FP_DONE";

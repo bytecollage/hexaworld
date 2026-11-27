@@ -21,7 +21,7 @@ const RECIPES = [
   { id: "resin", group: "crafts", name: "Resin", requires: ["campfire"], cost: { pineCone: 2 }, needsFire: true,
     text: "Pine cones melted into resin: only next to a lit campfire or bonfire. Glue for the arrows of the bow; it also burns well." },
   { id: "basket", group: "crafts", name: "Basket", requires: ["rope"], cost: { grass: 6, rope: 2 }, container: 5,
-    text: "A woven basket you carry with you: 5 more slots, opened with Shift (or its button at the right of the inventory) above the inventory. Lasts half a year (10 days): then it breaks and what it held falls beside you. Lost if you die." },
+    text: "A woven basket you carry with you: 5 more inventory slots, right after the other 10 (its icon at the right of the bar shows how long it lasts). Lasts half a year (10 days): then it breaks and what it held falls beside you. Lost if you die." },
   { id: "knife", group: "tools", name: "Knife", requires: ["sharpStone"], cost: { sharpStone: 1, grass: 1 },
     text: "With it in your hand, click a dead animal to cut its meat. Takes one inventory slot." },
   { id: "axe", group: "tools", name: "Axe", requires: ["knife", "rope"], cost: { sharpStone: 1, branches: 2, rope: 1 },
@@ -34,8 +34,8 @@ const RECIPES = [
     text: "With it in your hand: click a fruit bush, tall grass or flowers to dig it up and carry it; then, with the sapling in your hand, click where you want to replant it." },
   { id: "bow", group: "tools", name: "Bow and arrows", requires: ["axe", "tannedHide", "sharpBone", "resin"], cost: { branches: 3, rope: 2, tannedHide: 1, sharpBone: 1, resin: 1 },
     text: "Bow with its arrows (a single object). With it in your hand: click a land animal less than 9 cells away to shoot it (the axe only reaches 4.5). It also works against the jaguar." },
-  { id: "jar", group: "tools", name: "Jar", requires: ["knife"], cost: { coconut: 2 },
-    text: "Stores and carries water: with it in your hand, click a lake to fill it (5 water). Used for the cage's trough." },
+  { id: "jar", group: "tools", name: "Jar", requires: ["knife"], cost: { openCoconut: 2 },
+    text: "Stores and carries water: with it in your hand, click a lake to fill it (5 water). Used for the cage's trough. Made from 2 open coconuts (break whole ones with a tool: Ctrl+click on them)." },
   { id: "trap", group: "capture", name: "Trap", requires: ["knife", "rope"], cost: { branches: 4, rope: 1 },
     text: "With it in your hand, click the ground to place it. It needs fruit or berries as bait: a small mammal goes in to eat and is trapped alive. Click it to pick it up (with whatever is inside)." },
   { id: "cage", group: "capture", name: "Cage", requires: ["trap", "axe"], cost: { branches: 8, rope: 2 },
@@ -50,11 +50,24 @@ const TORCH_DURATION = 0.55;                           // days of flame of a tor
 const hand = { item: null, torchLeft: 0 };        // the hand slot: { type, amount } or null (outside the inventory)
 const inHand = () => hand.item?.type ?? null;
 const amountOf = t => (inventory.find(r => r && r.type === t)?.amount || 0) + (inHand() === t ? hand.item.amount : 0);
-const hasMaterials = r => Object.entries(r.cost).every(([t, n]) => amountOf(t) >= n);
+// materials for crafting and building: what you carry plus what is in an open chest or the house you are in (no need to move it)
+const nearbyStores = () => [openChestRef?.storage, player.inside?.storage].filter(Boolean);
+const inStores = t => nearbyStores().reduce((s, l) => s + l.reduce((m, r) => m + (r && r.type === t && !r.living ? r.amount : 0), 0), 0);
+const available = t => amountOf(t) + inStores(t);
+const hasMaterials = r => Object.entries(r.cost).every(([t, n]) => available(t) >= n);
+function spendMaterial(t, n) {                       // from the inventory and the hand first, then from the open chest or the house
+  const own = Math.min(n, amountOf(t)); if (own) spend(t, own);
+  let left = n - own;
+  for (const l of nearbyStores()) l.forEach((r, k) => {
+    if (left <= 0 || !r || r.type !== t || r.living) return;
+    const m = Math.min(left, r.amount); r.amount -= m; left -= m; if (!r.amount) l[k] = null;
+  });
+  if (nearbyStores().length) renderContainers();
+}
 const FIRE_REACH = 2;                                // reference cells: "next to a fire" for recipes with needsFire
 const nearFire = () => player.i >= 0 && world.fires.some(o => burning(o) && wrapDistance(o.i, player.i) <= cellsFor(FIRE_REACH));
 const upgrades = new Set();                          // recipes with `container` already made (basket): made only once
-let basket = null, basketMadeAt = 0;                 // the basket's slots (null until it is made) and when it was made
+let basket = null, basketMadeAt = 0;                 // the basket: how many slots it adds to the inventory (null until it is made), and when
 const known = new Set();                             // recipes and builds made at least once: they stay in the workshop
 const learn = id => { if (!known.has(id)) { known.add(id); renderWorkshop(); } };
 const nameOf = id => (RECIPES.find(r => r.id === id) || BUILDS[id])?.name.toLowerCase() || id;
@@ -64,7 +77,7 @@ const hasTool = r => !r.tools || r.tools.some(t => amountOf(t) > 0);
 const orList = l => l.map(t => an(nameOf(t))).join(" or ");
 const andList = l => l.length < 2 ? l.join("") : l.slice(0, -1).join(", ") + " and " + l[l.length - 1];
 const canMake = r => learned(r) && hasTool(r) && hasMaterials(r) && (!r.needsFire || nearFire()) && !(r.container && upgrades.has(r.id));
-function resetUpgrades() { upgrades.clear(); known.clear(); basket = null; basketOpen = false; inventory.fill(null); dropLadder(); }   // new game
+function resetUpgrades() { upgrades.clear(); known.clear(); basket = null; inventory.length = SLOTS; inventory.fill(null); dropLadder(); }   // new game
 const cannotMake = r => !learned(r) ? `I do not know how yet: first I have to make ${andList(toLearn(r).map(id => an(nameOf(id))))}`
   : !hasTool(r) ? `I need ${orList(r.tools)} with me for that`
   : !hasMaterials(r) ? `For ${an(r.name.toLowerCase())} I need ${recipeText(r)}`
@@ -80,20 +93,14 @@ function swapSlot(k) {                            // key 1-0 or click: slot k go
   if (inHand() === "torch" && hand.torchLeft <= 0) hand.torchLeft = TORCH_DURATION;
   renderInventory();
 }
-function storeHand() {                              // click on the hand: to the first free slot (or next to those of its type)
+function storeHand() {                              // click on the hand: into the inventory (piling up with its type, or a free slot)
   if (!hand.item) return;
   cancelWork(player.job ? "I stopped what I was doing" : null);
-  const same = inventory.find(r => r && r.type === hand.item.type);
-  if (same) {
-    if (same.living || hand.item.living) { same.living = [...(same.living || []), ...(hand.item.living || [])]; same.amount = same.living.length; }
-    else { same.amount += hand.item.amount; if (hand.item.water) same.water = (same.water || 0) + hand.item.water; }
-    hand.item = null;
-  }
-  else { const k = inventory.indexOf(null); if (k < 0) { notify(SAY.full); return; } inventory[k] = hand.item; hand.item = null; }
+  if (addStack(inventory, hand.item)) notify(SAY.full); else hand.item = null;   // what does not fit stays in the hand
   renderInventory();
 }
 function toHand(type) {                              // puts a freshly made object in the hand; whatever was there goes to the inventory
-  if (inHand() === type) { hand.item.amount++; return; }
+  if (inHand() === type && !single(hand.item) && hand.item.amount < STACK_LIMIT.inventory) { hand.item.amount++; return; }
   if (hand.item) storeHand();
   if (hand.item) { store(type, 1); return; }        // what is in the hand does not fit: the new item goes to the inventory
   hand.item = { type, amount: 1 };
@@ -103,11 +110,11 @@ function craftNow(id) {                              // tools, capture items and
   const r = RECIPES.find(r => r.id === id);
   if (!canMake(r)) { notify(cannotMake(r)); return; }
   if (!r.container && amountOf(id) === 0 && !inventory.includes(null) && hand.item) { notify(SAY.full); return; }
-  for (const [t, n] of Object.entries(r.cost)) spend(t, n);
+  for (const [t, n] of Object.entries(r.cost)) spendMaterial(t, n);
   learn(id);
-  if (r.container) {                                 // a carried container instead of an item: its slots open with Shift
-    basket = Array(r.container).fill(null); basketOpen = true; basketMadeAt = gameDay();
-    upgrades.add(id); notify(SAY.basketDone); renderInventory(); renderContainers(); return;
+  if (r.container) {                                 // a carried container instead of an item: it adds slots to the inventory
+    inventory.push(...Array(r.container).fill(null)); basket = r.container; basketMadeAt = gameDay();   // more inventory slots
+    upgrades.add(id); notify(SAY.basketDone); renderInventory(); return;
   }
   if (id === "torch") { toHand("torch"); if (hand.torchLeft <= 0) hand.torchLeft = TORCH_DURATION; }
   else store(id, r.gives || 1);
@@ -118,10 +125,11 @@ function lightFireAt(id, i) {                          // campfire or bonfire in
   const r = RECIPES.find(r => r.id === id);
   if (!canMake(r)) { notify(cannotMake(r)); return; }
   if (!canPlaceAt(i)) { notify("It will not fit there: I need a free spot"); return; }
-  for (const [t, n] of Object.entries(r.cost)) spend(t, n);
+  for (const [t, n] of Object.entries(r.cost)) spendMaterial(t, n);
   const o = addObject(i, id, { burnsUntil: nextDawn(), builtAt: gameDay() });
   world.fires.push(o); learn(id);
-  notify(`The ${r.name.toLowerCase()} is lit: it feels warmer`);
+  const plantsNext = world.neighbors[i].some(j => j !== undefined && DEF[flammableAt(j)?.type]?.kind === "flora");   // they may catch fire (wildfire.js)
+  notify(plantsNext ? `The ${r.name.toLowerCase()} is lit… careful, the plants next to it could catch fire` : `The ${r.name.toLowerCase()} is lit: it feels warmer`);
   if (buildMode === id) { buildMode = null; renderWorkshop(); }
   renderInventory();
 }
@@ -147,6 +155,7 @@ function activeLights() {                             // [x, y, lightRadius, pro
     l.push([cx + o.ox, cy + o.oy, FIRE[o.type].light, FIRE[o.type].protects]);
   }
   if (inHand() === "torch" && player.i >= 0 && !player.dead && !player.inside) l.push([player.x, player.y, FIRE.torch.light, FIRE.torch.protects]);
+  for (const o of (world.wildfire || []).slice(0, 40)) if (!o.removed) { const [x, y] = firePos(o); l.push([x, y, 2.5, 1.5]); }   // a wildfire lights up the night
   const home = player.inside;                          // the occupied house glows through its windows (it does not scare predators)
   if (home && !home.removed) { const [hx, hy] = toPixel(...world.cells[home.i]); l.push([hx, hy, 2.2, 0, true]); }
   return l;
@@ -156,11 +165,42 @@ function characterLit() {                      // is the character inside the li
   return false;
 }
 const playerInDanger = () => player.i >= 0 && !player.dead && !player.sleeping && !player.inside && darkness() >= 0.45 && !characterLit();
+// ---- dying: the world stays. What you carried (inventory, hand, the basket's slots) is left as piles where you fell
+//      (live animals run off; the basket is lost); you wake up the next morning somewhere safe on the same map.
 function killPlayer(text) {
   if (player.dead) return;
-  player.dead = true; player.route = []; player.task = null; player.job = null;
+  player.dead = true; player.route = []; player.task = null; player.job = null; player.repeat = null;
+  closeChest(); closeCage(); buildMode = null;
+  dropBelongings(player.i);
   $("deathText").textContent = text;
   $("death").classList.add("visible");
+}
+function dropBelongings(at) {
+  for (const r of [...inventory, hand.item].filter(Boolean)) {
+    if (r.living) { for (const v of r.living) freeIndividual(v, at); continue; }
+    dropStack(at, r);
+  }
+  inventory.length = SLOTS; inventory.fill(null); hand.item = null; hand.torchLeft = 0;
+  if (basket) { basket = null; upgrades.delete("basket"); }
+  renderInventory(); renderWorkshop();
+}
+function safeSpot(awayFrom) {                          // a meadow away from where you fell, with no predator around and water not far
+  const danger = i => { const [x, y] = toPixel(...world.cells[i]); return world.animals.some(a => SPECIES[a.type].hunt && !a.dead && !SPECIES[a.type].flies && Math.hypot(...wrapDelta(a.x - x, a.y - y)) < 12 * SQ3); };
+  const ok = (i, far) => terrain(i) === "grass" && !blockedForPlayer(i) && !objs(i).length && world.toWater[i] >= 3 && world.toWater[i] <= 12 &&
+                          (awayFrom < 0 || wrapDistance(i, awayFrom) > cellsFor(far)) && !danger(i);
+  for (const far of [15, 5, 0]) for (let t = 0; t < 400; t++) { const i = Math.floor(Math.random() * world.cells.length); if (ok(i, far)) return i; }
+  return player.i;
+}
+async function wakeAfterDeath() {                      // the button on the death screen
+  if (!player.dead) return;
+  const fell = player.i;
+  $("death").classList.remove("visible"); curtain(true);
+  await new Promise(r => setTimeout(r, 900));
+  await simulate(nextDawn() + 0.002 - gameDay(), 1, true, () => drawClock());
+  const i = safeSpot(fell); player.i = i; [player.x, player.y] = toPixel(...world.cells[i]); player.route = [];
+  cam.tx = player.x; cam.ty = player.y; $("follow").checked = true;
+  player.dead = false; player.health = MAX_HEALTH; player.hurtAt = gameDay(); curtain(false);
+  notify("I woke up somewhere else… my things must still be where I fell");
 }
 function threatenPlayer(a, e, dt) {                       // returns true if the predator is going after the character
   if (!playerInDanger() || sizeOf(a) < 0.8) { a.stalksPlayer = false; return false; }
@@ -169,7 +209,7 @@ function threatenPlayer(a, e, dt) {                       // returns true if the
     if (d > 1.3 * SQ3 || !(world.lake[player.i] || world.lakeShore[player.i])) return false;
     if ((a.lastPlayerAttack || 0) > gameDay() - 0.03) return true;
     a.lastPlayerAttack = gameDay();
-    if (rnd() < 0.4) killPlayer(`${an(SINGULAR[a.type].toLowerCase(), "A")} attacked you on the lake shore, in the dark.`);
+    if (rnd() < 0.4) startAttack(a, "shore");          // it lunges and bites: the struggle begins (struggle.js)
     else notify("Something moved in the water! I should get away from the lake");
     return true;
   }
@@ -177,7 +217,7 @@ function threatenPlayer(a, e, dt) {                       // returns true if the
   if (!a.stalksPlayer) { a.stalksPlayer = true; notify("Something is following me in the dark… I need a fire"); }
   const sprint = d < 2.5 * SQ3;
   moveToward(a, player.x, player.y, e.speed * SQ3 * (sprint ? e.hunt.huntSpeed : 0.8), dt);
-  if (Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y)) < 0.5) killPlayer(`${an(SINGULAR[a.type].toLowerCase(), "A")} attacked you in the dark.`);
+  if (Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y)) < 0.5) startAttack(a, "dark");   // it reaches the character: it bites, and keeps on
   return true;
 }
 // provoke: { radius, times, charge, reach, warn, attacks, kills }: each time the character walks within `radius` reference
@@ -191,7 +231,7 @@ function provoked(a, e, dt) {                          // true while it is attac
   if (a.provokedUntil > gameDay()) {
     if (!playerAround()) { a.provokedUntil = 0; return false; }
     if (moveToward(a, player.x, player.y, e.speed * pv.charge * SQ3, dt) === "blocked") a.moving = false;   // at the edge of its terrain: it waits there
-    if (Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y)) < Math.max(0.5, (pv.reach || 0) * SQ3)) killPlayer(pv.kills);
+    if (Math.hypot(...wrapDelta(player.x - a.x, player.y - a.y)) < Math.max(0.5, (pv.reach || 0) * SQ3)) startAttack(a, "provoked");
     return true;
   }
   if (!playerAround() || sizeOf(a) < 0.8) { a.playerClose = false; return false; }
@@ -203,14 +243,18 @@ function provoked(a, e, dt) {                          // true while it is attac
   if (!next || Math.hypot(...wrapDelta(next.x - a.x, next.y - a.y)) >= d) return false;   // passing by, or it came to the character
   if (gameDay() - (a.annoyedAt || -1) < APPROACH_GAP / DAY_DURATION) return false;          // the same visit, wandering in and out
   a.annoyedAt = gameDay();
+  return annoy(a, e);
+}
+function provokeNow(a, e) {                           // it charges at the character (by day too); on reaching it, the attack begins
+  a.annoyed = 0; a.evade = null; a.charge = null; a.chaseTarget = null; a.eating = 0;
+  a.provokedUntil = gameDay() + PROVOKED_SECONDS / DAY_DURATION;
+  notify(e.provoke.attacks);
+}
+function annoy(a, e) {                                // one more bother today (an approach, a missed shot): the last one makes it attack
+  const pv = e.provoke; if (!pv || a.dead) return false;
   if (a.annoyedDay !== clock.day) { a.annoyedDay = clock.day; a.annoyed = 0; }
   a.annoyed++;
-  if (a.annoyed >= pv.times) {
-    a.annoyed = 0; a.evade = null; a.charge = null; a.chaseTarget = null; a.eating = 0;
-    a.provokedUntil = gameDay() + PROVOKED_SECONDS / DAY_DURATION;
-    notify(pv.attacks);
-    return true;
-  }
+  if (a.annoyed >= pv.times) { provokeNow(a, e); return true; }
   if (a.annoyed === pv.times - 1) notify(pv.warn);
   return false;
 }

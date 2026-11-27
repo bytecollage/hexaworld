@@ -2,7 +2,9 @@
 //  MAJOR BUILDINGS: HOUSE (SLEEP) AND FENCE BY POSTS (WITH GATE). Choosing where things go (also fires).
 // =====================================================================================
 const BUILDS = {
-  house:   { name: "House", requires: ["axe", "tannedHide"], cost: { branches: 30, stones: 15, rope: 6, tannedHide: 2 }, dur: 18,
+  hut:     { name: "Hut", requires: ["rope", "knife"], cost: { branches: 12, grass: 20, rope: 3 }, dur: 10,
+            text: "A cone of branches and thatch over 3 cells. Choose where: the character builds it (10 s). Enter it to be safe from predators; from dusk you can sleep in it until dawn. No storage. Lasts 1 year." },
+  house:   { name: "House", hidden: true, requires: ["axe", "tannedHide"], cost: { branches: 30, stones: 15, rope: 6, tannedHide: 2 }, dur: 18,
             text: "Marked green under the mouse if it fits. Choose where: the character builds it (18 s). Click it to enter: inside you are safe, you have a 20-slot storage and, at dusk or at night, you can sleep until dawn." },
   fence:  { name: "Fence (by posts)", requires: ["rope"], tools: ["axe", "knife"], cost: { branches: 1, rope: 1 }, dur: 1,
             text: "Click a cell to plant a post (1 wood + 1 rope; you need an axe or a knife with you). Each new post joins the nearest one with rails, filling the cells in between. No animal crosses it: yours do not get out and land predators do not get in. Keep marking cells until you press Esc or the icon again. With the hammer in your hand, click a post to take it out." },
@@ -11,7 +13,8 @@ const BUILDS = {
   gate: { name: "Gate (post)", requires: ["fence"], tools: ["axe", "knife"], cost: { branches: 2, rope: 1 }, dur: 2,
             text: "A fence post only the character can pass through. Costs 2 wood + 1 rope; you need an axe or a knife with you." },
 };
-const PLACED_FIRES = ["campfire", "bonfire"];         // fires are also placed by choosing a cell
+const PLACED_FIRES = ["campfire", "bonfire"];
+const SHELTERS = ["house", "hut"];                    // built over several cells; entered to be safe (and sleep): see their `shelter` trait         // fires are also placed by choosing a cell
 let buildMode = null;                                  // "house" | "fence" | "gate" | "campfire" | "bonfire" | null: the next click chooses where
 let mouseWorld = null;                                // ground point under the mouse (to preview where things go)
 const FENCE_JOIN = 8;                                 // grid steps: a new post joins the nearest post this close
@@ -24,6 +27,7 @@ function chooseBuild(id) {
   const what = PLACED_FIRES.includes(id) ? RECIPES.find(r => r.id === id).name.toLowerCase() : id;
   notify(!buildMode ? "Better not build that now"
     : id === "house" ? "Where should I build my house? (Esc: never mind)"
+    : id === "hut" ? "Where should I build my hut? (Esc: never mind)"
     : id === "fence" || id === "gate" ? `Where do the posts go? (${recipeText({ cost: BUILDS[id].cost })} each; they join the nearest one. Esc: done)`
     : `Where should the ${what} go? (Esc: never mind)`);
   renderWorkshop();
@@ -67,7 +71,7 @@ function pushOut(c) {                                 // animals standing on a c
   for (const a of world.animals) if (!SPECIES[a.type].flies && idxAt(a.x, a.y) === c) { const [dx, dy] = wrapDelta(x - a.x, y - a.y); a.x += dx; a.y += dy; a.moving = false; a.goal = null; }
 }
 const canBuild = id => learned(BUILDS[id]) && hasTool(BUILDS[id]) && hasMaterials(BUILDS[id]);
-function payBuild(id) { for (const [t, n] of Object.entries(BUILDS[id].cost)) spend(t, n); renderInventory(); }
+function payBuild(id) { for (const [t, n] of Object.entries(BUILDS[id].cost)) spendMaterial(t, n); renderInventory(); }
 // the house is a rectangle of HOUSE_HALF world units around the anchor cell, along one of 6 directions (30° + 60°·k).
 // It takes every cell whose center falls under it. Small things on the ground are moved aside; trees, bushes or builds prevent it
 const STORAGE_SLOTS = 20, HOUSE_HALF = [1.45, 0.9];
@@ -79,27 +83,36 @@ function houseCells(a, k) {
   });
   return { cells, k, axis: [ux, uy] };
 }
-function houseFootprint(a) {
+function hutCells(a, k) {                             // the hut: a triangle of 3 cells (the anchor and two neighbors next to each other)
+  const n = world.neighbors[a], cells = [a, n[k % 6], n[(k + 1) % 6]].filter(c => c !== undefined);
+  return { cells, k, axis: [Math.cos(Math.PI / 6 + k * Math.PI / 3), Math.sin(Math.PI / 6 + k * Math.PI / 3)] };
+}
+const shelterCells = (type, a, k) => type === "hut" ? hutCells(a, k) : houseCells(a, k);
+function shelterFootprint(type, a) {                   // the cells it would take at a, turned the first way that fits (null if none)
   if (a === undefined) return null;
   const free = i => i !== undefined && !isWater(terrain(i)) && world.outcropAt[i] < 0 && !world.houseAt.has(i) && !world.fenceAt?.has(i) &&
                     objs(i).every(o => HOUSE_REMOVABLE.has(o.type));
   for (let k = 0; k < 6; k++) {
-    const h = houseCells(a, (k + (houseTurn || 0)) % 6);
-    if (h.cells.every(free)) return h;
+    const h = shelterCells(type, a, (k + (houseTurn || 0)) % 6);
+    if (h.cells.length === (type === "hut" ? 3 : h.cells.length) && h.cells.every(free)) return h;
   }
   return null;
 }
+const houseFootprint = a => shelterFootprint("house", a);
 let houseTurn = 0;                                    // preferred direction while choosing (the wheel… keeps the first that fits)
 const aroundOf = cells => [...new Set(cells.flatMap(c => world.neighbors[c]))].filter(j => j !== undefined && !cells.includes(j) && !blockedForPlayer(j))
   .sort((a, b) => wrapDistance(a, player.i) - wrapDistance(b, player.i));
-function buildHouse(i) {
-  if (!canBuild("house")) { notify(cannotMake(BUILDS.house)); return; }
-  const h = houseFootprint(i);
-  if (!h) { notify("My house will not fit there (no trees, bushes, water or builds under it)"); return; }
-  payBuild("house");
+function buildShelter(type, i) {                       // house or hut over its cells
+  const name = BUILDS[type].name.toLowerCase();
+  if (!canBuild(type)) { notify(cannotMake(BUILDS[type])); return; }
+  const h = shelterFootprint(type, i);
+  if (!h) { notify(`My ${name} will not fit there (no trees, bushes, water or builds under it)`); return; }
+  payBuild(type);
   for (const c of h.cells) for (const o of [...objs(c)]) removeObject(o);   // small things are moved aside
-  const o = addObject(i, "house", { cells: h.cells, axis: h.axis, storage: Array(STORAGE_SLOTS).fill(null), builtAt: gameDay() });
-  o.ox = 0; o.oy = 0;                                    // centered on the anchor cell
+  const o = addObject(i, type, { cells: h.cells, axis: h.axis, storage: Array(DEF[type].shelter.storage).fill(null), builtAt: gameDay() });
+  const [ax, ay] = toPixel(...world.cells[i]), mid = h.cells.map(c => wrapDelta(...toPixel(...world.cells[c]).map((v, k) => v - (k ? ay : ax))));
+  o.ox = type === "hut" ? mid.reduce((s, d) => s + d[0], 0) / mid.length : 0;   // the hut stands in the middle of its 3 cells; the house on the anchor
+  o.oy = type === "hut" ? mid.reduce((s, d) => s + d[1], 0) / mid.length : 0;
   for (const c of h.cells) world.houseAt.set(c, o);
   world.houses.push(o);
   const outside = aroundOf(h.cells);                   // whoever was underneath moves to one side
@@ -107,45 +120,50 @@ function buildHouse(i) {
     const v = outside[0], [vx, vy] = toPixel(...world.cells[v]); obj.x = vx; obj.y = vy; if (isPlayer) obj.i = v; else { obj.moving = false; obj.goal = null; } };
   moveAside(player, true);
   for (const a of world.animals) if (!SPECIES[a.type].flies) moveAside(a, false);
-  learn("house");
-  notify(SAY.houseDone);
+  learn(type);
+  notify(type === "hut" ? SAY.hutDone : SAY.houseDone);
   buildMode = null; renderWorkshop();
 }
+const buildHouse = i => buildShelter("house", i);
 const adjacent = house => house.cells.some(c => c === player.i || world.neighbors[player.i]?.includes(c));
 const doorOf = house => aroundOf(house.cells)[0];
 // ---- inside the house: safe, with the storage
-function enterHouse(house) {                           // its storage shows as two rows above the inventory (containers.js)
-  player.inside = house; player.route = []; player.task = null; closeChest();
-  renderContainers();
-  notify(SAY.enterHouse);
+const entersAtNightOnly = o => !!DEF[o.type]?.shelter?.nightOnly;
+function enterHouse(house) {                           // its storage shows as rows above the inventory (containers.js); the hut has none
+  if (entersAtNightOnly(house) && currentPhase().name === "Day") { notify("The hut is for the night: I can shelter in it from dusk"); return; }
+  player.inside = house; player.route = []; player.task = null; closeChest(); closeCage();
+  renderContainers(); renderWorkshop();                // what the house stores counts for crafting
+  notify(house.type === "hut" ? SAY.enterHut : SAY.enterHouse);
 }
 function leaveHouse() {
   if (!player.inside) return;
   player.inside = null;
-  renderContainers();
+  renderContainers(); renderWorkshop();
 }
 // ---- chest: built in a cell like a fire; its storage shows as a row above the inventory while it is open
 function placeChest(i) {
   if (!canBuild("chest")) { notify(cannotMake(BUILDS.chest)); return; }
   if (!canPlaceAt(i)) { notify("It will not fit there: I need a free spot"); return; }
-  for (const [t, n] of Object.entries(BUILDS.chest.cost)) spend(t, n);
+  for (const [t, n] of Object.entries(BUILDS.chest.cost)) spendMaterial(t, n);
   const o = addObject(i, "chest", { storage: Array(CHEST_SLOTS).fill(null), builtAt: gameDay() });
   if (buildMode === "chest") buildMode = null;
   renderInventory();
+  if (o) world.chests.push(o);                         // it wears out in 2 years (durability.js)
   if (o) { learn("chest"); notify(SAY.chestDone); openChest(o); }
 }
 // ---- hammer: dismantle what was built and recover its materials
 const RECOVERS = {                                    // what each thing gives back when dismantled
-  fence: BUILDS.fence.cost, gate: BUILDS.gate.cost, house: BUILDS.house.cost, chest: BUILDS.chest.cost,
+  fence: BUILDS.fence.cost, gate: BUILDS.gate.cost, house: BUILDS.house.cost, hut: BUILDS.hut.cost, chest: BUILDS.chest.cost,
   cage: { branches: 8, rope: 2 }, trap: { branches: 4, rope: 1 },
   bonfire: { stones: 5 },                            // the wood already burned
   campfire: {},                                         // only ashes remain
 };
-const DISMANTLE_DURATION = { chest: 2, fence: 1, gate: 1.5, house: 8, cage: 3, trap: 1, bonfire: 2, campfire: 1 };
-function allFit(types) {                          // is there room for all these types at once?
-  const newOnes = types.filter(t => inHand() !== t && !inventory.some(r => r && r.type === t));
+const DISMANTLE_DURATION = { chest: 2, fence: 1, gate: 1.5, house: 8, hut: 4, cage: 3, trap: 1, bonfire: 2, campfire: 1 };
+function allFit(types) {                          // is there room for one more of each of these at once? (roughly: a slot per new type)
+  const newOnes = types.filter(t => !hasRoomWithoutSlot(t));
   return newOnes.length <= inventory.filter(r => !r).length + (hand.item ? 0 : 1);
 }
+const hasRoomWithoutSlot = t => (inHand() === t && !single(hand.item) && hand.item.amount < STACK_LIMIT.inventory) || inventory.some(r => r && r.type === t && !single(r) && r.amount < STACK_LIMIT.inventory);
 function recover(materials) {
   const done = Object.entries(materials).filter(([, n]) => n > 0);
   for (const [t, n] of done) store(t, n);
@@ -154,18 +172,18 @@ function recover(materials) {
 function dismantle(o) {
   if (o.removed) return;
   if (o.type === "house" && o.storage.some(Boolean)) { notify("I should empty the house first"); return; }
-  if (o.type === "chest" && o.storage.some(Boolean)) { notify("I should empty the chest first"); return; }
+  if (DEF[o.type]?.shelter && (player.inside === o || player.house === o)) { notify("I have to get out first"); return; }
+  if ((o.type === "chest" || o.type === "cage") && o.storage?.some(Boolean)) { notify(`I should empty the ${o.type} first`); return; }
   const mat = { ...RECOVERS[o.type] };
   if (o.type === "trap" && o.baitItem) mat[o.baitItem] = (mat[o.baitItem] || 0) + 1;
-  if (o.type === "cage") for (const [t, n] of Object.entries(o.food)) mat[t] = (mat[t] || 0) + n;
-  const living = o.type === "cage" ? o.animals : o.type === "trap" && o.prey ? [o.prey] : [];
+  const living = o.type === "trap" && o.prey ? [o.prey] : [];   // (a cage has to be emptied first)
   if (!allFit([...Object.keys(mat), ...living.map(v => v.type)])) { notify("I cannot carry what is inside"); return; }
   for (const v of living) storeIndividual(v);          // animals that were inside go to the inventory (alive)
   wearTool("hammer");
   if (o === openCageRef) closeCage();
   if (o === openChestRef) closeChest();
   removeObject(o);
-  if (o.type === "house") { world.houses = world.houses.filter(c => c !== o); for (const c of o.cells) world.houseAt.delete(c); }
+  if (DEF[o.type]?.shelter) { world.houses = world.houses.filter(c => c !== o); for (const c of o.cells) world.houseAt.delete(c); }
   if (isPost(o)) world.fenceAt.delete(o.i);
   const text = recover(mat);
   notify(`I took the ${ELEMENT_NAME(o.type).toLowerCase()} apart${text ? ": " + text : " (nothing usable left)"}` + (living.length ? ` · I carry ${living.length} animal(s)` : ""));
@@ -177,13 +195,13 @@ function sleep(house) {
   if (currentPhase().name === "Day") { notify(SAY.notSleepy); return; }
   player.sleeping = true; player.house = house; player.inside = house; player.route = []; player.task = null;
   speedBeforeSleep = clock.speed; clock.speed = 60;       // the night goes by quickly while you sleep
-  $("sleeping").classList.add("visible");
+  $("sleeping").classList.add("visible"); curtain(true);
   notify(SAY.sleep);
 }
 function wakeUp() {
   if (!player.sleeping) return;
   player.sleeping = false; clock.speed = speedBeforeSleep;
-  $("sleeping").classList.remove("visible");
+  $("sleeping").classList.remove("visible"); curtain(false);
   player.inside = null; renderContainers();
   if (!adjacent(player.house)) { const v = doorOf(player.house); if (v !== undefined) { const [x, y] = toPixel(...world.cells[v]); player.x = x; player.y = y; player.i = v; } }
   notify(SAY.wakeUp);

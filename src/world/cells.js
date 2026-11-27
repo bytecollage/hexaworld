@@ -7,7 +7,7 @@ const howMany = (i, type) => objs(i).reduce((n, o) => n + (o.type === type), 0);
 const freeCell = i => i !== undefined && objs(i).length < MAX_PER_CELL;
 function addObject(i, type, extra = {}) {
   if (!DEF[type]) return null;                                 // not registered (removed from content/registry.js)
-  if (type !== "house" && world.houseAt?.has(i)) return null;   // nothing grows or falls inside the house
+  if (!DEF[type].shelter && world.houseAt?.has(i)) return null;   // nothing grows or falls inside a house or hut
   const l = world.objects[i] || (world.objects[i] = []);
   if (l.length >= MAX_PER_CELL) return null;
   const sem = world.objSeed++;
@@ -30,6 +30,8 @@ function addAround(i, type, extra = {}, rings = 2) {
   }
   return null;
 }
+// a stack left on the ground as a pile, as close to cell i as there is room (up to 8 steps away); null if nowhere
+const dropStack = (i, stack) => i === undefined || i < 0 ? null : addAround(i, "pile", { stack }, 8);
 function removeObject(o) {
   const l = world.objects[o.i]; if (!l) return;
   const k = l.indexOf(o); if (k >= 0) l.splice(k, 1);

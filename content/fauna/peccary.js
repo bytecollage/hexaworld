@@ -15,9 +15,10 @@ defineFauna({
     phase: 110, normalOnly: true,
     run(ctx) {
       for (let k = 0; k < Math.max(1, Math.round(ctx.grass.length / (2500 * CELL_AREA))); k++) {
-        const c = ctx.pick(ctx.grass), near = [c, ...world.neighbors[c]].filter(i => SPECIES.peccary.zone(i));
+        const c = ctx.pick(ctx.grass); if (c === undefined) break;   // no grassland that reaches a lake (tiny worlds)
+        const near = [c, ...world.neighbors[c]].filter(i => SPECIES.peccary.zone(i));
         const herd = []; for (let n = 4 + Math.floor(rnd() * 3); n > 0; n--) herd.push(ctx.add("peccary", ctx.pick(near), 0.5));
-        ctx.adult(herd[0]); ctx.adult(herd[1]);
+        ctx.adult(herd[0]); ctx.adult(herd[1]);         // (null when a cell was missing: adult() skips it)
       }
     },
   },

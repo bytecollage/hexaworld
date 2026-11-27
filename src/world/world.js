@@ -2,7 +2,7 @@
 //  WRAPPING WORLD: a big hexagon of radius N that tiles the plane by repeating itself.
 //  Leaving through one side = entering through the opposite one. Every cell has 6 neighbors.
 // =====================================================================================
-const RADIUS_MIN = 200, RADIUS_MAX = 375, TEST_RADIUS = 60;   // in grid cells (CELL_SCALE per reference cell)
+const RADIUS_MIN = 100, RADIUS_MAX = 100, TEST_RADIUS = 60;   // in grid cells (CELL_SCALE per reference cell); small while developing (fast fingerprints), the final size comes later
 const world = { N: RADIUS_MIN, seed: 1 + Math.floor(Math.random() * 1e9), cells: [], index: new Map(),
                 mirrors: [], base: [], painted: new Map(), colors: [], objects: [], animals: [], testMap: false };
 

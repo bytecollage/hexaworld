@@ -12,27 +12,38 @@ function updateWork(dt) {
   w.t = (performance.now() - w.start) / 1000;     // real time (does not depend on frames)
   if (w.t >= w.dur) { player.job = null; w.onDone(); if (player.repeat?.job === w.type && !player.job && !player.task) continueRepeat(); }
 }
-// ---- repeat (double click with the axe on a tree, or with the shovel on a small plant): when one is done the character
-//      goes on to the nearest one (any standing tree; the same kind of plant) within REPEAT_RADIUS cells of the first,
-//      until there are none left or you give another order
+// ---- repeat (Ctrl+click): when one is done the character goes on to the nearest one within REPEAT_RADIUS cells of the
+//      first (any standing tree for the axe; the same kind of plant or thing otherwise), until there are none left or
+//      you give another order. Kinds: chopping (axe), digging up (shovel), cutting branches (knife), gathering (any hand).
 const REPEAT_RADIUS = 5;                          // grid cells
 const REPEATS = {
-  axe:    { task: "chop", job: "chop",   matches: (r, i) => !!treeAt(i), room: r => hasRoom("branches"), none: "No more trees around here" },
-  shovel: { task: "dig",  job: "gather", matches: (r, i) => objs(i).some(o => o.type === r.type && diggable(o)), room: r => hasRoom("sapling_" + r.type), none: "No more of those around here" },
+  axe:    { job: "chop",   matches: (r, i) => !!treeAt(i), room: r => hasRoom("branches"), none: "No more trees around here",
+            say: "I will chop every tree around here (click elsewhere to stop me)", go: i => { walkTo(i); player.task = { type: "chop", i }; } },
+  shovel: { job: "gather", matches: (r, i) => objs(i).some(o => o.type === r.type && diggable(o)), room: r => hasRoom("sapling_" + r.type), none: "No more of those around here",
+            say: "I will dig up all of these around here (click elsewhere to stop me)", go: i => { walkTo(i); player.task = { type: "dig", i }; } },
+  strip:  { job: "gather", matches: (r, i) => { const o = stripTarget(i); return !!o && o.type === r.type && stripRested(o); }, room: r => hasRoom("branches"), none: "No more branches to cut around here",
+            say: "I will cut branches from all of these around here (click elsewhere to stop me)", go: i => goAndDo(approachOf([i]), { type: "strip", i }) },
+  gather: { job: "gather", matches: (r, i) => objs(i).some(o => o.type === r.type && HARVESTABLE(o)), room: r => hasRoom(DEF[r.type]?.harvest?.gives ?? r.type), none: "Nothing more of that around here",
+            say: "I will gather all of these around here (click elsewhere to stop me)", go: i => walkTo(i) },
 };
-function startRepeat(cell) {
-  const tool = inHand(), k = REPEATS[tool], t = player.task;
-  if (!k || t?.type !== k.task || t.i !== cell) return;
-  player.repeat = { tool, job: k.job, origin: cell, type: tool === "shovel" ? objs(cell).find(diggable)?.type : null };
-  notify(tool === "axe" ? "I will chop every tree around here (click elsewhere to stop me)" : "I will dig up all of these around here (click elsewhere to stop me)");
+function startRepeat(cell) {                       // after the click on `cell` gave an order: repeat it on the nearby ones
+  const tool = inHand(), t = player.task;
+  let kind = null, type = null;
+  if (tool === "axe" && t?.type === "chop" && t.i === cell) kind = "axe";
+  else if (tool === "shovel" && t?.type === "dig" && t.i === cell) { kind = "shovel"; type = objs(cell).find(diggable)?.type; }
+  else if (t?.type === "strip" && t.i === cell) { kind = "strip"; type = stripTarget(cell)?.type; }
+  else if (player.gather === cell) { kind = "gather"; type = objs(cell).find(HARVESTABLE)?.type; }
+  if (!kind) return;
+  player.repeat = { kind, tool, job: REPEATS[kind].job, origin: cell, type };
+  notify(REPEATS[kind].say);
 }
 function continueRepeat() {
-  const r = player.repeat, k = REPEATS[r.tool];
+  const r = player.repeat, k = REPEATS[r.kind];
   if (inHand() !== r.tool) { player.repeat = null; return; }
   if (!k.room(r)) { player.repeat = null; notify("I cannot carry any more: I stop"); return; }
   const next = cellsAround(r.origin, REPEAT_RADIUS).filter(i => k.matches(r, i)).sort((a, b) => wrapDistance(a, player.i) - wrapDistance(b, player.i))[0];
   if (next === undefined) { player.repeat = null; notify(k.none); return; }
-  walkTo(next); player.task = { type: k.task, i: next };
+  k.go(next);
 }
 function craft(id) {                           // checks now; materials are spent when finished
   if (PLACED_FIRES.includes(id)) { chooseBuild(id); return; }   // fires: the next click chooses the cell
@@ -43,7 +54,8 @@ function craft(id) {                           // checks now; materials are spen
   work("build", BUILD_DURATION[id], () => craftNow(id), { recipe: id });
 }
 function harvestAt(i) {
-  const dur = objs(i).filter(HARVESTABLE).reduce((t, o) => t + (GATHER_DURATION[o.type] || 1), 0);
+  const faster = o => inHand() === "knife" ? DEF[o.type].harvest.knife?.faster ?? 1 : 1;   // the knife cuts tall grass quicker
+  const dur = objs(i).filter(HARVESTABLE).reduce((t, o) => t + (GATHER_DURATION[o.type] || 1) * faster(o), 0);
   if (dur > 0) work("gather", dur, () => harvestAtNow(i));
 }
 function chop(i) { const o = treeAt(i); if (o && !hasRoom("branches")) { notify("I have no room for the wood"); return; } if (o) work("chop", isAdult(o) ? 5 : 3, () => { if (!o.removed && o.fellAt === undefined) chopNow(i); }, { tree: o }); }

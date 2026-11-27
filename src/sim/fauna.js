@@ -67,11 +67,13 @@ function stepAnimals(dtStep) {
   world.predatorsNow = world.animals.filter(a => SPECIES[a.type].hunt?.preys.size && !a.dead && !a.toRemove && !a.dyingSince && sizeOf(a) >= 0.8);
   for (const a of world.animals) {
     if (a.toRemove) continue;
+    if (heldNow(a)) { a.moving = false; continue; }    // in a predator's jaws: it struggles there (struggle.js)
     if (lodIsFar) {                                     // far away: wait for its turn, keeping the time it missed
       a.lodSlot ??= Math.floor(Math.random() * FAR_EVERY);
       if ((lodFrame + a.lodSlot) % FAR_EVERY && lodIsFar(a)) { a.lag = (a.lag || 0) + dtStep; continue; }
     }
     const dt = dtStep + (a.lag || 0); a.lag = 0;
+    perf.stepped++;                                     // the performance panel (perf.js)
     const e = SPECIES[a.type];
     if (e.hunt) { updatePredator(a, dt); continue; }
     if (e.update) { e.update(a, dt); continue; }                            // species with their own behavior (parrot, beehive…)

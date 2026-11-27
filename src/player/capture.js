@@ -1,26 +1,40 @@
 // =====================================================================================
 //  CAPTURE: TRAPS, CAGES, CAPTIVE ANIMALS AND WATER (JAR)
 // =====================================================================================
-const CAGE_CAPACITY = 4, JAR_WATER = 5, TROUGH_MAX = 10, FEEDER_MAX = 12;
+const JAR_WATER = 5, CAGE_STORAGE = 5, CAGE_STORAGE_MAX = 10;   // water in a full jar; the cage's slots (live animals, food, jars of water): 5, up to 10
+const CAGE_SLOT_COST = { branches: 2, rope: 1 };       // each slot added with the + button
+const TRAP_ESCAPE_DAYS = 1;                            // a trapped animal escapes after a whole day without being picked up
 const THIRST_DEATH_DAYS = 3;                            // days without drinking until death (in the inventory, in a trap or in a cage)
-const captiveDiet = t => CAPTIVE_DIET[t] || ["fruit", "berries", "flowers"];
-const BAITS = ["fruit", "berries"];
+const captiveDiet = t => { const d = CAPTIVE_DIET[t] || ["fruit", "berries", "flowers"]; return d.includes("fruit") ? [...d, "openCoconut"] : d; };   // fruit eaters eat open coconut too
+const BAITS = ["fruit", "berries", "openCoconut"];
 
 // ---- inventory room (so nothing is destroyed if it does not fit)
-function hasRoom(type) {
-  return inHand() === type || inventory.some(r => r && r.type === type) || inventory.includes(null) || !hand.item;
+function hasRoom(type) {                              // does at least one more of it fit (hand or inventory)?
+  return (inHand() === type && !single(hand.item) && hand.item.amount < STACK_LIMIT.inventory) || roomFor(inventory, type) > 0 || !hand.item;
 }
 // ---- live animals: each slot keeps its individuals with their hunger and thirst
-function individualOf(a) {
-  const needs = SPECIES[a.type].needs, nowDay = gameDay();
-  return { type: a.type, lastMeal: a.lastMeal ?? nowDay, lastDrink: nowDay - Math.min(1, a.thirst ?? 0) * needs.thirst };
+// their needs as captives: the species' own, or `live.needs` for those that do not eat or drink in the simulation (frog, turtle)
+const captiveNeeds = type => SPECIES[type].needs ?? SPECIES[type].live.needs;
+// health of a captive: what is left of its food and water (0 = it dies); `need` says which one runs out first
+function captiveHealth(ind) {
+  const nowDay = gameDay(), food = 1 - (nowDay - ind.lastMeal) / captiveNeeds(ind.type).dies, water = 1 - (nowDay - ind.lastDrink) / THIRST_DEATH_DAYS;
+  return { v: Math.max(0, Math.min(1, food, water)), need: food <= water ? "food" : "water" };
 }
-function storeIndividual(ind) {                      // into the inventory (or the hand if it already holds the same ones)
-  const destination = inHand() === ind.type ? hand.item : inventory.find(r => r && r.type === ind.type);
-  if (destination) { (destination.living ||= []).push(ind); destination.amount = destination.living.length; renderInventory(); return true; }
-  const k = inventory.indexOf(null);
-  if (k >= 0) inventory[k] = { type: ind.type, amount: 1, living: [ind] };
-  else if (!hand.item) hand.item = { type: ind.type, amount: 1, living: [ind] };
+const worstHealth = list => list.map(captiveHealth).reduce((w, h) => h.v < w.v ? h : w, { v: 1, need: "food" });
+const healthColor = h => h.v < 0.25 ? "#e5534b" : h.need === "food" ? "#e3b341" : "#4a93cf";   // red: about to die; amber: hungry first; blue: thirsty first
+function healthBar(r) {                                 // for an inventory slot with live animals: the weakest one
+  if (!r?.living?.length) return "";
+  const h = worstHealth(r.living);
+  return `<span class="health" title="${h.need === "food" ? "needs food" : "needs water"}"><span style="width:${Math.round(100 * h.v)}%;background:${healthColor(h)}"></span></span>`;
+}
+function individualOf(a) {
+  const needs = captiveNeeds(a.type), nowDay = gameDay();
+  return { type: a.type, born: a.born, lastMeal: a.lastMeal ?? nowDay, lastDrink: nowDay - Math.min(1, a.thirst ?? 0) * needs.thirst };
+}
+function storeIndividual(ind) {                      // a live animal: a slot of its own in the inventory (or the empty hand)
+  const k = inventory.indexOf(null), r = { type: ind.type, amount: 1, living: [ind] };
+  if (k >= 0) inventory[k] = r;
+  else if (!hand.item) hand.item = r;
   else { notify(SAY.full); return false; }
   renderInventory();
   return true;
@@ -37,7 +51,7 @@ const firstAvailableLive = () => (LIVE.has(inHand()) ? inHand() : inventory.find
 
 // ---- traps
 function capture(a, t) {                             // the animal goes in for the bait and gets trapped (alive)
-  t.prey = individualOf(a); t.prey.lastMeal = gameDay(); t.baitItem = null;
+  t.prey = individualOf(a); t.prey.lastMeal = gameDay(); t.baitItem = null; t.caughtAt = gameDay();   // the lid falls (trap.js)
   t.wear = (t.wear || 0) + WEAR_PER_USE.trap;          // each catch wears the trap
   a.toRemove = true;
   if (Math.hypot(...wrapDelta(a.x - player.x, a.y - player.y)) < 25 * SQ3) notify(`${an(SINGULAR[a.type].toLowerCase(), "A")} fell into my trap!`);
@@ -51,12 +65,12 @@ function bait(t) {
 function place(type, i) {                           // trap or cage on the ground, in that cell
   if (amountOf(type) === 0) return;
   if (blocked(i) || objs(i).length >= MAX_PER_CELL) { notify("It will not fit there"); return; }
-  const o = addObject(i, type, type === "trap" ? { baitItem: null, prey: null } : { animals: [], food: {}, water: 0 });
+  const o = addObject(i, type, type === "trap" ? { baitItem: null, prey: null } : { animals: [], storage: Array(CAGE_STORAGE).fill(null) });
   if (!o) return;
   o.wear = takeWear(type); o.builtAt = gameDay();
   spend(type, 1);
   (type === "trap" ? world.traps : world.cages).push(o);
-  if (type === "trap") notify(bait(o) ? `Trap set, with ${o.baitItem === "fruit" ? "fruit" : "berries"} as bait` : "Trap set, but it needs bait: fruit or berries");
+  if (type === "trap") notify(bait(o) ? `Trap set, with ${(RESOURCE_NAME[o.baitItem] || o.baitItem).toLowerCase()} as bait` : "Trap set, but it needs bait: fruit or berries");
   else notify("The cage is ready for my animals");
   renderInventory();
 }
@@ -65,77 +79,38 @@ function pickUpTrap(t) {
   if (!hasRoom("trap") || (t.prey && !hasRoom(t.prey.type))) { notify(SAY.full); return; }
   if (t.prey) { storeIndividual(t.prey); notify(`I caught ${an(SINGULAR[t.prey.type].toLowerCase())}`); }
   if (t.baitItem) store(t.baitItem, 1);
-  store("trap", 1); keepWear("trap", t.wear);
+  const worn = (t.wear || 0) >= 1 - 1e-6;             // its 5th catch: it falls apart when picked up
+  if (!worn) { store("trap", 1); keepWear("trap", t.wear); }
   removeObject(t);
-  if (!t.prey) notify("I picked up the trap");
+  if (worn) notify("The trap fell apart: it had caught 5 animals");
+  else if (!t.prey) notify("I picked up the trap");
 }
 
 // ---- cages
 let openCageRef = null;
-function openCage(j) { openCageRef = j; renderCage(); }
-function closeCage() { openCageRef = null; $("cagePanel").classList.remove("visible"); }
-function putInCage(j) {
-  if (j.animals.length >= CAGE_CAPACITY) { notify(`The cage is full (${CAGE_CAPACITY})`); return; }
-  const t = firstAvailableLive();
-  if (!t) { notify("I am not carrying any animal"); return; }
-  j.animals.push(takeIndividual(t));
-  renderCage();
+const cageLiving = j => (j.storage || []).flatMap(r => r?.living || []);   // the animals in a cage's slots
+function openCage(j) { openCageRef = j; renderContainers(); }   // its 5 slots show as a row above the inventory: drag animals, food and jars there
+function growCage(j) {                                 // the + button: one more slot, up to CAGE_STORAGE_MAX, paying its materials
+  if (!j || j.storage.length >= CAGE_STORAGE_MAX) return;
+  if (!hasMaterials({ cost: CAGE_SLOT_COST })) { notify(`For another slot I need ${recipeText({ cost: CAGE_SLOT_COST })}`); return; }
+  for (const [t, n] of Object.entries(CAGE_SLOT_COST)) spendMaterial(t, n);
+  j.storage.push(null); notify(`The cage has ${j.storage.length} slots now`);
+  renderInventory(); renderContainers();
 }
-function takeFromCage(j, k) {
-  const ind = j.animals[k];
-  if (!ind || !hasRoom(ind.type)) { notify(SAY.full); return; }
-  j.animals.splice(k, 1); storeIndividual(ind); renderCage();
-}
-function giveFood(j) {                               // fills the feeder with what the ones inside eat
-  const types = j.animals.length ? [...new Set(j.animals.flatMap(a => captiveDiet(a.type)))] : ["fruit", "berries", "flowers", "grass"];
-  let placed = 0;
-  for (const t of types) while (amountOf(t) > 0 && Object.values(j.food).reduce((s, n) => s + n, 0) < FEEDER_MAX) {
-    spend(t, 1); j.food[t] = (j.food[t] || 0) + 1; placed++;
-  }
-  notify(placed ? `I put ${placed} food in the feeder` : "I have no food for them (or the feeder is full)");
-  renderInventory(); renderCage();
-}
-function giveWater(j) {
-  const v = inHand() === "jar" ? hand.item : inventory.find(r => r && r.type === "jar");
-  if (!v || !v.water) { notify("I need a jar of water (from a lake)"); return; }
-  const n = Math.min(v.water, TROUGH_MAX - j.water);
-  v.water -= n; j.water += n;
-  notify(n ? `I poured ${n} water in the trough` : "The trough is already full");
-  renderInventory(); renderCage();
-}
-function pickUpCage(j) {
-  if (j.animals.length) { notify("I should take the animals out first"); return; }
+function closeCage() { if (!openCageRef) return; openCageRef = null; renderContainers(); }
+function pickUpCage(j) {                             // (no way to do it from the game for now: its button was removed until further notice)
   if (!hasRoom("cage")) { notify(SAY.full); return; }
-  for (const [t, n] of Object.entries(j.food)) store(t, n);   // whatever is left in the feeder goes back to the inventory
+  const kept = j.storage.filter(Boolean);              // the food and jars in its slots go back to the inventory
+  if (kept.length > inventory.filter(r => !r).length + kept.filter(r => inventory.some(x => x && x.type === r.type && r.type !== "jar")).length) { notify("I have no room for what is in the cage"); return; }
+  for (const r of kept) storeStack(r);
+  j.storage.fill(null);
   store("cage", 1); keepWear("cage", j.wear); removeObject(j); closeCage(); notify("I picked up the cage");
 }
-function renderCage() {
-  const j = openCageRef; if (!j) return;
-  const nowDay = gameDay(), bar = (v, color) => `<span class="bar"><span style="width:${Math.round(100 * Math.max(0, Math.min(1, v)))}%;background:${color}"></span></span>`;
-  const animals = j.animals.map((a, k) => {
-    const needs = SPECIES[a.type].needs;
-    return `<button class="slot animal" data-take="${k}" title="${SINGULAR[a.type]} · click: take it to the inventory">${ICONS[a.type]}
-      ${bar(1 - (nowDay - a.lastMeal) / needs.dies, "#e3b341")}${bar(1 - (nowDay - a.lastDrink) / THIRST_DEATH_DAYS, "#4a93cf")}</button>`;
-  }).join("") + `<div class="slot empty"></div>`.repeat(CAGE_CAPACITY - j.animals.length);
-  const feeder = Object.entries(j.food).filter(([, n]) => n > 0).map(([t, n]) => `${ICONS[t]}${n}`).join(" ") || "empty";
-  $("cagePanel").innerHTML = `<div class="hdr"><b>Cage</b> <span>${j.animals.length}/${CAGE_CAPACITY}</span><button data-close title="Close">×</button></div>
-    <div class="animals">${animals}</div>
-    <div class="stores">Feeder: ${feeder} · Trough: 💧${j.water}</div>
-    <div class="legend-bars"><span class="c1"></span>hunger <span class="c2"></span>thirst</div>
-    <div class="actions">
-      <button class="btn" data-action="putIn" ${firstAvailableLive() && j.animals.length < CAGE_CAPACITY ? "" : "disabled"}>Put animal in</button>
-      <button class="btn" data-action="food">Give food</button>
-      <button class="btn" data-action="water">Give water</button>
-      <button class="btn" data-action="gather" ${j.animals.length ? "disabled" : ""}>Pick up cage</button>
-    </div>`;
-  $("cagePanel").classList.add("visible");
-}
-
 // ---- hunger and thirst of captives (inventory, hand, traps and cages)
 function updateCaptives() {
   const nowDay = gameDay(), deadOnes = [];
   const dies = ind => {
-    const needs = SPECIES[ind.type].needs;
+    const needs = captiveNeeds(ind.type);
     if (nowDay - ind.lastMeal >= needs.dies) return "hunger";
     if (nowDay - ind.lastDrink >= THIRST_DEATH_DAYS) return "thirst";
     return null;
@@ -152,15 +127,29 @@ function updateCaptives() {
   }
   inventory.forEach((r, k) => { if (r?.living && !r.amount) inventory[k] = null; });
   if (hand.item?.living && !hand.item.amount) hand.item = null;
-  for (const t of world.traps) if (t.prey && !t.removed) { const c = dies(t.prey); if (c) { deadOnes.push([t.prey, c, "in a trap"]); t.prey = null; } }
+  for (const t of world.traps) if (t.prey && !t.removed) {
+    if (nowDay - (t.caughtAt ?? nowDay) >= TRAP_ESCAPE_DAYS) {   // a whole day without anyone coming: it gnaws its way out
+      freeIndividual(t.prey, t.i); const name = SINGULAR[t.prey.type].toLowerCase(); t.prey = null;
+      notify(`The ${name} in my trap got away: I took too long`); renderInventory(); continue;
+    }
+    const c = dies(t.prey); if (c) { deadOnes.push([t.prey, c, "in a trap"]); t.prey = null; }
+  }
   for (const j of world.cages) {
     if (j.removed) continue;
-    for (const ind of j.animals) {                    // they eat and drink by themselves from the feeder and the trough
-      const needs = SPECIES[ind.type].needs;
-      if (nowDay - ind.lastMeal >= needs.hunger) { const t = captiveDiet(ind.type).find(t => j.food[t] > 0); if (t) { j.food[t]--; ind.lastMeal = nowDay; } }
-      if (nowDay - ind.lastDrink >= needs.thirst && j.water > 0) { j.water--; ind.lastDrink = nowDay; }
+    const st = j.storage || [];
+    for (const ind of cageLiving(j)) {               // they eat and drink by themselves from the food and jars in the cage's slots
+      const needs = captiveNeeds(ind.type), diet = captiveDiet(ind.type);
+      if (nowDay - ind.lastMeal >= needs.hunger) {
+        const k = st.findIndex(r => r && diet.includes(r.type) && r.amount > 0);
+        if (k >= 0) { if (--st[k].amount <= 0) st[k] = null; ind.lastMeal = nowDay; }
+      }
+      if (nowDay - ind.lastDrink >= needs.thirst) { const jar = st.find(r => r?.type === "jar" && r.water > 0); if (jar) { jar.water--; ind.lastDrink = nowDay; } }
     }
-    j.animals = j.animals.filter(ind => { const c = dies(ind); if (c) deadOnes.push([ind, c, "in the cage"]); return !c; });
+    st.forEach((r, k) => {
+      if (!r?.living) return;
+      r.living = r.living.filter(ind => { const c = dies(ind); if (c) deadOnes.push([ind, c, "in the cage"]); return !c; });
+      r.amount = r.living.length; if (!r.amount) st[k] = null;
+    });
   }
   world.traps = world.traps.filter(t => !t.removed);
   world.cages = world.cages.filter(j => !j.removed);
@@ -170,10 +159,9 @@ function updateCaptives() {
     for (const [ind] of deadOnes) recordDeath(ind, "captive");
     renderInventory();
   }
-  if (openCageRef) {                                 // the panel closes if you walk away
+  if (openCageRef) {                                 // the cage's row closes if you walk away
     const [cx, cy] = toPixel(...world.cells[openCageRef.i]);
     if (openCageRef.removed || Math.hypot(...wrapDelta(cx + openCageRef.ox - player.x, cy + openCageRef.oy - player.y)) > 2 * SQ3) closeCage();
-    else renderCage();
   }
 }
 
@@ -256,7 +244,7 @@ function shoot(a) {
   const d = Math.hypot(...wrapDelta(a.x - player.x, a.y - player.y)), [dx, dy] = wrapDelta(a.x - player.x, a.y - player.y);
   world.flyingAxe = { x: player.x, y: player.y, tx: player.x + dx, ty: player.y + dy, icon: "➶", straight: true };
   wearTool("bow");
-  const prob = Math.min(0.9, 0.75 * (1 - d / (BOW_RANGE * SQ3) * 0.5) * (still(a) ? 1.2 : 1) * (a.inShelter ? 0.5 : 1));
+  const prob = Math.min(0.9, 0.75 * (1 - d / (BOW_RANGE * SQ3) * 0.5) * (still(a) ? 1.2 : 1) * (a.inShelter ? 0.5 : 1) * (SPECIES[a.type].asTarget?.hit ?? 1));
   if (rnd() < prob) {
     Object.assign(a, { dead: true, deadAt: gameDay(), moving: false, fleeing: false, goal: null, action: null, cause: "hunted", stunnedUntil: 0 });
     if (SPECIES[a.type].needs) a.inShelter = false;
@@ -266,6 +254,7 @@ function shoot(a) {
   } else {
     if (SPECIES[a.type].needs) fleeFrom(a, SPECIES[a.type], [dx, dy], player);
     notify("My arrow missed");
+    if (SPECIES[a.type].provoke) annoy(a, SPECIES[a.type]);   // a missed shot bothers it (caiman, jaguar)
   }
   renderInventory();
 }

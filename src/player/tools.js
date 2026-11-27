@@ -9,6 +9,19 @@ function animalAt(x, y, cond, radius = 0.9) {          // animal closest to a gr
   return best;
 }
 const treeAt = i => objs(i).find(o => TREES.has(o.type) && o.fellAt === undefined);
+// strip: { gives, amount, adultAmount, time, rest }: with the knife, branches cut from a plant without felling it (an adult
+// tree gives `adultAmount`); again after `rest` days
+const stripTarget = i => objs(i).find(o => !!DEF[o.type]?.strip && o.fellAt === undefined);
+const stripRested = o => gameDay() >= (o.strippedAt ?? -Infinity) + DEF[o.type].strip.rest;
+function stripNow(i) {
+  const o = stripTarget(i); if (!o) return;
+  const s = DEF[o.type].strip, name = (DEF[o.type].name || o.type).toLowerCase();
+  if (!stripRested(o)) { notify(`I already cut branches from this ${name}: it has to grow back`); return; }
+  if (!hasRoom(s.gives)) { notify(SAY.full); return; }
+  const n = TREES.has(o.type) && isAdult(o) ? s.adultAmount ?? s.amount : s.amount;
+  store(s.gives, n); o.strippedAt = gameDay(); wearTool("knife");
+  notify(`I cut ${n} ${n === 1 ? "branch" : "branches"} from the ${name}`);
+}
 function chopNow(i) {                                   // the tree falls; when it finishes falling its wood and fruits are gathered, and it disappears
   const o = treeAt(i);
   if (!o) return;
@@ -46,7 +59,7 @@ function throwAxe(a) {                             // the axe leaves the hand an
   const wear = takeWear("axe") + WEAR_PER_USE.axe;      // the axe in the hand leaves with its wear (and a throw wears it)
   spend("axe", 1);                                 // the one in the hand
   if (!inHand() && amountOf("axe") === 0) renderInventory();
-  const prob = Math.min(0.9, 0.55 * (weak(a) ? 1.5 : 1) * (still(a) ? 1.3 : 1) * (d > 3 * SQ3 ? 0.7 : 1));
+  const prob = Math.min(0.9, 0.55 * (weak(a) ? 1.5 : 1) * (still(a) ? 1.3 : 1) * (d > 3 * SQ3 ? 0.7 : 1) * (SPECIES[a.type].asTarget?.hit ?? 1));
   if (rnd() < prob) {
     Object.assign(a, { dead: true, deadAt: gameDay(), moving: false, fleeing: false, goal: null, action: null, cause: "hunted" });
     if (SPECIES[a.type].needs) a.inShelter = false;
@@ -57,6 +70,7 @@ function throwAxe(a) {                             // the axe leaves the hand an
     dropAxe(player.x + dx, player.y + dy, wear);                // miss: the axe falls where the animal was
     chooseDestination(a, wrapDelta(a.x - player.x, a.y - player.y));
     notify("Missed! It ran off. I need my axe back");
+    if (SPECIES[a.type].provoke) annoy(a, SPECIES[a.type]);   // a missed throw bothers it
   }
   renderInventory();
 }
@@ -98,10 +112,11 @@ function killWithKnifeNow(a) {
   store("meat", MEAT[a.type] ?? 1); wearTool("knife");
   notify(`I got ${MEAT[a.type] ?? 1} meat${partsOf(a)}`);
 }
-function grabNow(a) {                                 // frogs and turtles (the `grab` trait): by hand, straight to the inventory as meat
+function grabNow(a) {                                 // frogs and turtles (the `grab` trait): by hand, alive; with the knife in the hand, meat
+  if (inHand() !== "knife") { takeAliveNow(a); return; }
   const n = SPECIES[a.type].grab.meat(a);
   a.toRemove = true;
   recordDeath(a, "hunted by the character");
-  store("meat", n);
+  store("meat", n); wearTool("knife");
   notify(`I caught ${an(SINGULAR[a.type].toLowerCase())}: ${n} meat`);
 }

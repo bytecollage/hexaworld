@@ -13,18 +13,20 @@ How the code is organized and how to change it. For the game rules, see [BEHAVIO
 ```
 index.html            page markup + the ordered list of engine scripts
 css/game.css          all the styles
+img/                  the app icon (icon.svg, and icon-180.png for browsers and phones that want a bitmap)
 src/
   core/               hex math (hex.js), $() (dom.js), seeded randomness (random.js), graph search (graph.js)
   registry/           the content registry: define*(), lookup tables, validation
   world/              world state and wrapping topology (world.js), terrain, generator, vegetation placement,
                       outcrops, objects per cell (cells.js), time and seasons (time.js)
   sim/                simulation: plants (flora.js), food, animal helpers (species.js), spawning, herbivore
-                      trips (herbivores.js), needs, generic movement (fauna.js), predators, births and deaths
-                      (population.js), simulate(days)
-  player/             inventory, gathering, crafting and fire, tools, click actions, jobs, capture, building,
+                      trips (herbivores.js), needs, generic movement (fauna.js), predators, struggles (struggle.js: predators holding a prey, attacks on the character, health), births and deaths
+                      (population.js), simulate(days), wildfire (wildfire.js: fire set with the torch, spreading over plants)
+  player/             inventory, gathering, crafting and fire, tools, click actions, jobs, capture, building, using the hand
+                      on the inventory (combine.js),
                       character movement
-  render/             camera, scene (ground + depth-sorted elements), drawing primitives, night, clouds (zoom < 30), character drawing
-  ui/                 inventory UI, containers (house/chest/basket rows above the inventory), workshop, minimap, clock, population chart, notices, loading screen, input
+  render/             camera, scene (ground + depth-sorted elements), drawing primitives, animal and item icons, night, clouds (zoom < 30), character drawing
+  ui/                 inventory UI (with the basket's slots), containers (house/chest rows above the inventory), workshop, minimap, clock, population chart, notices, loading screen, keeping the computer awake (wakeLock.js), performance panel (perf.js), input
   loop.js             the frame loop
   main.js             boot
 content/
@@ -33,7 +35,7 @@ content/
   flora/              one file per plant
   items/              things on the ground and inventory resources/tools
   world/              world features: nest, burrow, outcrops
-  structures/         campfire, bonfire, trap, cage, fence, house
+  structures/         campfire, bonfire, trap, cage, chest, fence, gate, hut, house
 tools/                verification scripts (see "Verifying a refactor")
 world.old.html        the original single-file game in Spanish (reference and source of the baseline)
 index.old.html        the earlier hex-map prototype (reference)
@@ -47,8 +49,11 @@ index.old.html        the earlier hex-map prototype (reference)
 2. `content/registry.js` runs next. It writes one `<script>` tag per content file with `document.write`, so the
    content files run in list order **before** `main.js`. This works on `file://`.
 3. `main.js` calls `finalizeRegistry()`, which fills the engine's lookup tables from the definitions, and then
-   generates the first world and starts `loop()`. After the first frame it hides the loading screen (`hideLoading()`,
-   src/ui/loading.js) and drops the workshop ladder. Regenerating a world goes through `withLoading(text, fn)`, which
+   generates the first world and starts `loop()`, inside `withLoading()` (src/ui/loading.js), so the loading screen is
+   painted first; after the first frame it hides the screen and drops the workshop ladder. The loading hexagon animates
+   only `transform` and `opacity`, which browsers run off the main thread, so it keeps turning during `generate()`.
+   The promise `booted` resolves when all that is done: dev tools that build their own world (tools/fingerprint.js,
+   tools/gallery.js) `await booted` first, or the game's first world could replace theirs. Regenerating a world goes through `withLoading(text, fn)`, which
    shows the screen and lets the browser paint it before the synchronous `generate()` runs.
 
 Content files only *declare* things. Engine code reads definitions at run time, never while loading, so content
@@ -63,6 +68,7 @@ can use any engine helper (`landZone`, `sizeOf`, `ctx`, `project`, …) inside i
   - The character always runs in real time.
   - **Level of detail:** in live play (`updateAnimals(dt, true)` from `loop()`), animals farther than about two screen widths from the camera and more than 25 reference cells from the character are updated every `FAR_EVERY` (4) frames, each on its own frame, with the game time they missed (`a.lag`). `simulate()` does not use it, so fingerprints are not affected by it.
 - **Every 0.5 s:** the slower systems: trees and bushes (`updateTrees`), the life cycle (`lifeCycle`), fires, fellings, captives and wear (`updateWear`).
+- **Performance panel** (src/ui/perf.js, Options → FPS): `loop()` times the animals (`timed("sim", …)`), the slow systems and the drawing into `perf`; `stepAnimals` counts the animals it really updates (`perf.stepped`) and `draw()` the things it draws (`drawStats.items`). `updateFps()` writes the panel every 0.5 s (counting the world's objects then). Timing only reads the clock, so fingerprints are not affected.
 - **`simulate(days)`** (src/sim/simulate.js) does the same without drawing. It is used from the console and by the verification tools. `skipToNextDay()` (the **Next day** button) uses it with fires, fellings, captives and wear included.
 
 State lives in a few global objects:
@@ -73,7 +79,7 @@ State lives in a few global objects:
 | `clock` | Time of day, day number, speed. |
 | `player` | The character's position, route, task and job. |
 | `cam` | Camera target, turn, tilt and zoom. |
-| `inventory`, `hand` | The inventory slots and the hand slot. |
+| `inventory`, `hand` | The inventory slots (10, `SLOTS`, plus the basket's while it lasts: `inventory.length` grows) and the hand slot. |
 
 Cells are indexed by an integer `i`. Every coordinate is valid, because `canon()` folds it into the original hexagon (the world wraps around).
 
@@ -172,12 +178,13 @@ Every species, plant, item, world feature and structure is **one file** that cal
 | `breed: { seasons, pct, litter, food, cap, nest, spawning, maturity }` | Breeding: seasons (0-3), share of pairs, litter size, only when well fed, carrying capacity × initial population, lays a nest (turtle), spawns in shallow water (fish). |
 | `alert`, `fleeing`, `defense` | Distance at which it notices a hunting predator; distance at which it flees from the character; catch-probability factor (armadillo 0.5). |
 | `needs: { thirst, hunger, dies, diet, hungryDiet, hidden, house, fleeing }` | Animals that eat and drink in the game: days until thirsty/hungry, days to starve, what they eat (ids of plants and items with `food`), what they eat when very hungry, hides in forests, lives in a burrow, distance at which the character makes them wary (`reactToPlayer`, src/sim/herbivores.js: they run only within half of it; otherwise trips are re-planned around the character with `avoidingPlayer`, which every `planTrip` route uses). After fleeing from a predator (`fleeFrom`, `fleeToOtherForest`) the animal keeps `a.fear` (where, until when): `avoidingFear` takes that spot out of its routes, it stays in its shelter while afraid unless thirst or hunger reach `PRESSING`, and a desperate animal only flees from a predator that is chasing something (`threatNearby`). A diet `Set` with `takesBait: true` is attracted by trap bait. |
-| `hunt: { preys, cycle, dies, active, mode, view, attack, huntSpeed, success, restTime, chaseTime, radius, sates, stealth, reach, onlyWeak, onlyShore, attackRadius, hungryBig, threatensPlayer, findsHidden, fishInShallowOnly, fallbackFood }` | Predators. `mode`: `chase` \| `ambusher` \| `scavenger`. `active`: `day` \| `night` \| `always`. `threatensPlayer`: `stalk` (jaguar) \| `shore` (caiman). `huntsFrom`: hunger at which it starts hunting (default 1). `soar`: radius of its circles over home (birds). `perch`: altitude when resting at home at night (0: on the ground). `view` is also the vulture's search radius. |
+| `hunt: { preys, cycle, dies, active, mode, view, attack, huntSpeed, success, restTime, chaseTime, radius, sates, stealth, reach, onlyWeak, onlyShore, attackRadius, hungryBig, threatensPlayer, struggle, findsHidden, fishInShallowOnly, fallbackFood }` | Predators. `mode`: `chase` \| `ambusher` \| `scavenger`. `active`: `day` \| `night` \| `always`. `threatensPlayer`: `stalk` (jaguar) \| `shore` (caiman). `struggle: { bite, preyBite, every, reach, kills }` (jaguar, caiman): it grabs a prey and bites it every `every` game seconds until it dies or tears free, and once it bites the character it keeps attacking it (src/sim/struggle.js; health: `hpOf(a)`, `playerHealth()`). `huntsFrom`: hunger at which it starts hunting (default 1). `soar`: radius of its circles over home (birds). `perch`: altitude when resting at home at night (0: on the ground). `view` is also the vulture's search radius. |
 | `nearPlayer: { retreat, watch, pace, says }` | Predators that are not hunting: closer than `retreat` reference cells they trot off (`pace` × speed); closer than `watch`, when not hungry, they stand still facing the character (`says`: notice lines). Fox and jaguar. |
 | `provoke: { radius, times, charge, reach, warn, attacks, kills }` | Predators: each time the character walks toward it and gets within `radius` reference cells counts as an approach (again only after leaving 1.3 × radius or after it slinks off, and at least `APPROACH_GAP` seconds apart); `reach`: biting distance while charging (caiman, from the edge of its terrain); the one before the last of the same day warns, the last makes it charge at `charge` × speed for 10 s, by day too, killing the character on contact (`provoked()`, crafting.js). Jaguar, caiman. |
+| `asTarget: { hit, axeOnLand }` | How the character hunts it: factor on the bow and axe hit chance; the axe only on land. A miss also calls `annoy()` if it has `provoke` (caiman). |
 | `chasesOff: { ids, radius }` | Predators: a rival of those species within `radius` gets a short charge and runs away (`a.evade`). Jaguar → fox. |
 | `hide`, `bones` | Hides and bones given (with the meat) when it is cut with the knife. |
-| `meat`, `live: { icon, name, diet }`, `grab: { meat(a) }` | Meat when cut (default 1); live captive (icon, inventory name, diet in a cage); caught by hand as meat (frog, turtle). |
+| `meat`, `live: { icon, name, diet, needs }`, `grab: { meat(a) }` | Meat when cut (default 1); live captive (icon, inventory name, diet in a cage, and `needs` as a captive for species without `needs`); caught by hand (frog, turtle): alive, or `grab.meat(a)` meat with the knife in the hand. |
 | `bigCarcass`, `leavesCarcass` | Its carcass grows more plants; a predator that leaves a carcass (others vanish). |
 | `followsMother`, `restsByDay`, `migrates` | Deer behaviors: young follow an adult, daytime rests, leaving crowded areas. |
 | `nightRest: "water" \| "lake" \| "beach"`, `swimSpeed` | Where it stays still at night; speed factor in water. |
@@ -207,6 +214,11 @@ Every species, plant, item, world feature and structure is **one file** that cal
 | `berries: { perSeason, withoutBees }` | Fruit at the start of spring and summer (bush). |
 | `driesInWinter`, `spreads`, `springSeeds` | Winter death chance; spring spreading chance; spring sprouting chance in empty meadows. |
 | `plantable`, `sapling: { icon, name, ground }`, `movedByHouse`, `leaf`, `sprouts: { plant, ground, chance }`, `outcrop` | Dug up with the shovel; sapling item; pushed aside by a house; drawn on top of another plant's leaf; what a rotting fruit may sprout into (and what it is sown as from the hand); an outcrop kind. |
+| `harvest.knife: { more, faster }` | With the knife in the hand: the harvest gives `more` × the amount in `faster` × the time (tall grass). |
+| `strip: { gives, amount, adultAmount, time, rest }` | With the knife: a click cuts `amount` of `gives` from the plant without removing it (`adultAmount` from an adult tree; `stripNow`, tools.js), again after `rest` days (pine, fruit tree, bush). |
+| `useWith: { <hand item>: { take, gives, amount, time } }` | Items: Ctrl+click on a stack of it (in the inventory or an open container; the result stays in that container) with that item in the hand turns `take` of it into `amount` of `gives`, with the notice `say` (pine cones + torch → resin; coconut + a tool → open coconut; `useHandOn`, combine.js). The knife on any live animal is a rule of the engine. |
+| (captives) | `captiveHealth(ind)` (capture.js): food/water left of a live animal and which runs out first; `healthBar(r)` for inventory slots and `worldBar()` (primitives.js) over traps and cages. |
+| `hoverable: true` | Structures: lit up (drawn brighter, with a golden outline on its cell) when the mouse is over it, and the pointer becomes a hand (chest, cage, trap; the house and the hut always are). |
 | `fuel` | Days of fire one unit adds when thrown on a campfire or bonfire (anything of plant origin; saplings use `sapling.fuel`). |
 
 ### Spawning
@@ -248,7 +260,7 @@ A step's `run(ctx)` gets these helpers and land facts:
    - Only plants and items with a `food` trait can be eaten.
 4. Add it to BEHAVIOR.md.
 
-Plants follow the same pattern with `defineFlora` in `content/flora/`. Where plants appear in a new world is decided by
+Plants follow the same pattern with `defineFlora` in `content/flora/`. `generate()` always leaves a lake: if the terrain has none, it digs one at the land cell farthest from the water (spawning land animals needs a lake). Where plants appear in a new world is decided by
 the vegetation rules in `src/world/placement.js`: add a rule there for a new plant to appear on its own.
 
 ## How to remove something
@@ -260,11 +272,19 @@ Delete (or comment out) its line in `content/registry.js`. The engine skips unre
 These are deliberate. They are core game mechanics, not species.
 
 - **Core resources of the player's crafting and tools.** Recipes and actions use `branches`, `stones`, `grass`, `berries`, `fruit`, `coconut`, `pineCone`, `hide`, `bones` and the crafts (`rope`, `sharpStone`, `sharpBone`, `tannedHide`, `resin`) by id (recipes, bait, stoking the bonfire, throwing stones). A recipe with `needsFire: true` is made only next to a burning campfire or bonfire.
+- **Stacks:** `STACK_LIMIT` and `capOf(list)` (player/inventory.js) give a list's per-slot limit (inventory 20, chest 50, house 100, cage 10); `addStack(list, r)` puts a stack in, piling up with its type and then taking free slots, and leaves in `r` what did not fit; live animals and jars are `single` (one per slot). `store`, `storeStack`, `storeIndividual`, `moveBetween`, `quickMove` and `mergeSame` go through them; `store` leaves what does not fit on the ground (`dropStack`, world/cells.js: a pile as close as there is room).
+- **Shelters:** a structure with `shelter: { life, decayFrom, storage, nightOnly }` (house, hut) is built over cells (`SHELTERS`, `shelterFootprint`, `buildShelter`), listed in `world.houses`/`world.houseAt`, entered, slept in, worn and collapsed the same way. `BUILDS[id].hidden` keeps the house out of the menu.
+- **Curtain** (src/ui/loading.js): `curtain(down)` puts a black screen over everything but the clock (sleeping, Next day, waking up after death); the map is not drawn while it is down. `simulate(..., onYield)` pauses briefly every few steps so the clock is seen moving.
+- **Death** (crafting.js): `killPlayer` drops what you carry (`dropBelongings`); `wakeAfterDeath` runs to the next dawn and puts you in `safeSpot()` of the same map.
+- **Animal icons** (src/render/animalIcons.js): at boot each catchable species is drawn with its `draw` on the map canvas and copied to a small canvas (`ANIMAL_ICON`); slots use it as an image (`animalIconHTML`), cages and traps draw it (`drawAnimalIcon`). `drawItemIcon` draws any item's inventory icon in the world (piles).
+- **Materials:** `hasMaterials(r)` uses `available(t)`: the inventory and the hand plus an open chest or the house the character is in (`nearbyStores`); costs are paid with `spendMaterial(t, n)` (own things first). Opening or closing them re-renders the workshop.
 - **Skills:** a recipe (`RECIPES`, crafting.js) or build (`BUILDS`, building.js) may have `requires: [ids]` (things that must have been made before: the `known` set) and `tools: [ids]` (one of them carried, not used up). `canMake`/`canBuild` check them; `cannotMake(r)` gives the reason in the character's voice; the workshop (`recipeShown`, `whyNot`, `needsText`) shows only learned things and lists both in the hover text.
 - **Player structures.** Fire, trap, cage, fence and house logic lives in `src/player/` (crafting.js, capture.js, building.js). Their content files only hold the name and the drawing. Fence posts and gates are cell objects listed in `world.fenceAt`; a post cell is blocked for animals (`blocked`, `landZone`) and, unless it is a gate, for the character.
-- **Wear** (`src/player/durability.js`): uses per tool (`WEAR_PER_USE`), lifespans of structures (`LIFE_DAYS`), the house's 5 years (`HOUSE_LIFE`); `updateWear()` runs with the slow systems. Inventory stacks and built objects carry `wear` (0 new … 1 broken).
+- **Wear** (`src/player/durability.js`): uses per tool (`WEAR_PER_USE`), lifespans of structures (`LIFE_DAYS`: cages and chests, listed in `world.cages` and `world.chests`, 2 years), the house's 5 years (`HOUSE_LIFE`); `updateWear()` runs with the slow systems. Inventory stacks and built objects carry `wear` (0 new … 1 broken).
 - **The vegetation placement rules** (`src/world/placement.js`) and the test map setup.
 - **Carcasses fertilizing tall grass and flowers** (`src/sim/needs.js`).
+- **Dragging to the map:** a slot dropped on the canvas calls `dropOnWorld()` (actions.js): the stack goes to the hand, then `placeFromHand()` (trap, cage, sapling) or `dropAction()`. `closeContainersExcept(cell)` (containers.js) closes an open chest or cage on any order elsewhere (containers have no close button; their icon and the sleep button are drawn in `.containerSide`, at the right above the basket's).
+- **Wildfire** (src/sim/wildfire.js): `ignite(o)` sets fire to anything of plant origin (flora, or items with `fuel`); burning objects carry `o.onFire` and are listed in `world.wildfire`; `updateWildfire()` (slow systems) spreads them (`spreadCells`: trees within a reference cell, other plants to the touching cells, items nowhere), lets lit campfires and bonfires set fire to a touching plant, and burns them out; `drawWildfire()` draws the flames after the scene. Charcoal and bones are left as `pile` objects.
 - **Beehive and parrot hooks.** They refer to their own id inside their own files.
 
 ## Verifying a refactor
@@ -278,13 +298,14 @@ The simulation is deterministic for a given seed, so a "fingerprint" of a run ca
 
 | Command | What it does |
 |---|---|
-| `FP_QUICK=1 tools/fp-all.sh index.html tools/fp-adapter-new.js /tmp/fp.json` | Quick check (about 2 min): seed 1 normal map for 15 days, test map for 60 days. |
-| `tools/fp-all.sh index.html tools/fp-adapter-new.js /tmp/fp.json` | Full check (about 19 min): 2 normal maps up to 120 days, 2 test maps up to 200 days. |
+| (note) | Normal maps in the fingerprints are always radius 100 (`FP_RADIUS` in tools/fp-adapter-new.js), whatever the game's default size. |
+| `FP_QUICK=1 tools/fp-all.sh index.html tools/fp-adapter-new.js /tmp/fp.json` | Quick check (about 1 min): seed 1 normal map for 15 days, test map for 60 days. |
+| `tools/fp-all.sh index.html tools/fp-adapter-new.js /tmp/fp.json` | Full check (about 4.5 min): 2 normal maps up to 120 days, 2 test maps up to 200 days. |
 | `node tools/compare-fp.js /tmp/fp.json tools/baseline-quick.json` | Compares a quick run with its baseline. |
 | `node tools/compare-fp.js /tmp/fp.json tools/baseline.json` | Compares a full run with its baseline. |
 | `tools/smoke.sh index.html /tmp/shot.png` | Loads the real page, saves a screenshot and prints script errors and registry warnings. |
 
-The current baselines were recorded on 2026-11-25 from `index.html` after animals started going around the character (and foxes and jaguars reacting to it) (quick run about 2 min, full run about 19 min). The first ones came from `world.old.html`; `compare-fp.js` still translates Spanish ids with `tools/words.json`.
+The current baselines were recorded on 2026-11-26 from `index.html` with normal maps of radius 100 (`FP_RADIUS`): quick run about 1 min, full run about 4.5 min. The first ones came from `world.old.html`; `compare-fp.js` still translates Spanish ids with `tools/words.json`.
 
 Notes on the tools:
 

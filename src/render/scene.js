@@ -2,8 +2,8 @@
 //  DRAWING
 // =====================================================================================
 let hover = -1;
-// the house or chest under the mouse: drawn brighter with a warm glow, so you know a click opens it
-const hoverTarget = () => hover < 0 || player.inside ? null : world.houseAt?.get(hover) || objs(hover).find(o => o.type === "chest") || null;
+// the house, chest, cage or trap under the mouse: drawn brighter with a warm glow, so you know a click opens it
+const hoverTarget = () => hover < 0 || player.inside ? null : world.houseAt?.get(hover) || objs(hover).find(o => DEF[o.type]?.hoverable) || null;   // house, chest, cage, trap
 const BACKGROUND = [16, 19, 23];
 
 function resizeCanvas() {
@@ -84,7 +84,9 @@ function draw() {
   drawGround(groundCells);
   // animals (the copy closest to the camera)
   if (showElements) for (const a of world.animals) {
-    const [x, y] = nearCamera(a.x, a.y), p = project(x, y);
+    let [x, y] = nearCamera(a.x, a.y);
+    if (a.heldBy) { x += Math.sin(performance.now() / 45) * 0.05; y += Math.cos(performance.now() / 60) * 0.03; }   // in a predator's jaws: it thrashes
+    const p = project(x, y);
     if (!p || p[2] < 0.3 || p[0] < -80 || p[0] > W + 80 || p[1] < -80 || p[1] > H + 80) continue;
     if (a.toRemove || (SPECIES[a.type].needs?.house && a.inShelter)) continue;      // inside the burrow
     const item = { type: a.type, x, y, a, fog: fogOf(p[2]) };
@@ -112,6 +114,7 @@ function draw() {
   if (player.i >= 0 && !player.dead && !player.sleeping && !player.inside) { const [x, y] = nearCamera(player.x, player.y); standing.push({ type: "character", x, y, fog: 0 }); }
   for (const it of standing) it.p = project(it.x, it.y);
   const sorted = standing.filter(it => it.p).sort((a, b) => a.p[1] - b.p[1]);
+  drawStats.items = flats.length + lows.length + sorted.length;   // the performance panel (perf.js)
   rememberPickables(sorted);
   const lit = hoverTarget();
   sorted.forEach(it => {
@@ -147,12 +150,14 @@ function draw() {
       const k = windBend(it) * (DEF[it.o.type].tree.sway ?? 0.04);
       ctx.save(); ctx.translate(it.p[0], it.p[1]); ctx.transform(1, 0, -k, 1, 0, 0); ctx.translate(-it.p[0], -it.p[1]);
       const b = birth(it.o);
+      if (it.o.onFire) ctx.filter = `brightness(${Math.max(0.35, 1 - (gameDay() - it.o.onFire.at) * DAY_DURATION / WILDFIRE.burn.tree)}) saturate(0.5)`;   // burning: it chars
       if (b < SEEDLING_PART) seedling(it, b / SEEDLING_PART); else DRAW[it.type]?.(it);   // just sprouted: a seedling first
       ctx.restore();
     } else if (it.o?.bornAt !== undefined && birth(it.o) < SEEDLING_PART) seedling(it, birth(it.o) / SEEDLING_PART);   // a sown bush
     else DRAW[it.type]?.(it);
   });
   ctx.globalAlpha = 1;
+  drawWildfire([...lows, ...sorted]);                 // flames over what is burning
 
   $("tilt").value = cam.tilt; $("rot").value = cam.rot;
   drawFlyingAxe();
@@ -166,7 +171,7 @@ function draw() {
 function placementPreview() {
   if (!mouseWorld || player.inside) return null;
   const a = idxAt(...mouseWorld); if (a === undefined) return null;
-  if (buildMode === "house") { const h = houseFootprint(a); return h ? { cells: h.cells, ok: true } : { cells: houseCells(a, houseTurn).cells, ok: false }; }
+  if (SHELTERS.includes(buildMode)) { const h = shelterFootprint(buildMode, a); return h ? { cells: h.cells, ok: true } : { cells: shelterCells(buildMode, a, houseTurn).cells, ok: false }; }
   if (buildMode === "fence") return fencePlan(a);
   if (buildMode === "gate" || buildMode === "chest" || PLACED_FIRES.includes(buildMode)) return { cells: [a], ok: canPlaceAt(a) };
   const t = inHand();
@@ -175,7 +180,7 @@ function placementPreview() {
   if (!buildMode && seedOf(t) && canPlaceAt(a) && !isWater(terrain(a))) return { cells: [a], ok: terrain(a) === seedOf(t).ground };
   return null;
 }
-function drawHoverTarget() {                     // a warm outline on the cells of the hovered house or chest (cheap: no filters)
+function drawHoverTarget() {                     // a warm outline on the cells of the hovered house, chest or cage (cheap: no filters)
   const o = hoverTarget();
   canvas.classList.toggle("clickable", !!o);
   if (!o) return;
@@ -208,9 +213,11 @@ function rememberPickables(sorted) {
     const [scl, tall] = sizes(it), o = it.o;
     let h = 0.45, w = 0.28;                                                 // in `tall` / `scl` units
     if (o && TREES.has(o.type) && o.fellAt === undefined) { h = 1.1 + 1.3 * growth(o); w = 0.4 + 0.15 * growth(o); }
-    else if (o?.type === "house") continue;                                 // the house is picked by its cells
+    else if (DEF[o?.type]?.shelter) continue;                               // a house or hut is picked by its cells
     else if (it.a) { h = BIG.has(it.a.type) || SPECIES[it.a.type].hunt ? 0.7 : 0.4; w = 0.35; }
     else if (o?.type === "chest") { h = 0.36; w = 0.3; }                      // a low box: just its drawing
+    else if (o?.type === "trap") { h = 0.4; w = 0.26; }                       // a small box of sticks
+    else if (o?.type === "cage") { h = 0.8; w = 0.42 + 0.06 * ((o.storage?.length || 5) - 5); }   // the cage with its roof (longer with more slots)
     pickables.push({ it, x0: it.p[0] - scl * w, x1: it.p[0] + scl * w, y0: it.p[1] - tall * h, y1: it.p[1] + scl * 0.12 });
   }
 }

@@ -24,7 +24,9 @@ const pos = e => { const b = canvas.getBoundingClientRect(); return [e.clientX -
 canvas.addEventListener("pointerdown", e => {
   const [x, y] = pos(e);
   canvas.setPointerCapture(e.pointerId);
-  if (e.button === 2) gesture = { type: "orbit", x, y, x0: x, y0: y, drag: false };   // drag: turn the camera; a plain click: drop
+  const ctrlClick = e.button === 2 && e.ctrlKey;          // on a Mac, Ctrl+click comes as a right click: it is still a Ctrl+click
+  if (e.button === 2 && !ctrlClick) gesture = { type: "orbit", x, y, x0: x, y0: y, drag: false };   // drag: turn the camera; a plain click: drop
+  else if (ctrlClick) gesture = { type: "move", x, y, x0: x, y0: y, drag: false, ctrlClick };
   else if (currentTool === "move" || spaceHeld || e.button === 1) gesture = { type: "move", x, y, x0: x, y0: y, drag: false };
   else { gesture = { type: "paint" }; paintAt(x, y); }
   if (gesture.type !== "paint") canvas.classList.add("dragging");
@@ -49,21 +51,22 @@ canvas.addEventListener("pointermove", e => {
 
   hover = (currentTool === "move" ? pickedCell(x, y) : cellAt(x, y)) ?? -1;
 });
-const DOUBLE_CLICK_MS = 400, lastClick = { t: 0, cell: -1 };
+// Ctrl+click (or Cmd+click) repeats the job on the nearby ones: chop, dig up, cut branches, gather
 const release = () => { gesture = null; canvas.classList.remove("dragging"); finishPainting(); };
 canvas.addEventListener("pointerup", e => {
-  if (gesture?.type === "move" && !gesture.drag && e.button === 0 && !spaceHeld) {
+  if (gesture?.type === "move" && !gesture.drag && (e.button === 0 || gesture.ctrlClick) && !spaceHeld) {
     const pk = pickAt(...pos(e)), p = pk && [pk.x, pk.y];
     if (p) {
       const [q, r] = toHex(p[0], p[1]), [cx, cy] = toPixel(q, r), cell = pk.cell ?? idx(q, r);
-      const now = performance.now(), double = now - lastClick.t < DOUBLE_CLICK_MS && lastClick.cell === cell;
-      lastClick.t = double ? 0 : now; lastClick.cell = cell;
+      const repeat = e.ctrlKey || e.metaKey || gesture.ctrlClick;
       player.task = null; player.repeat = null;
       cancelWork(player.job ? "I stopped what I was doing" : null);
       if (player.inside && !player.sleeping && world.houseAt.get(cell) !== player.inside) leaveHouse();   // a click outside the house: go out
-      if (openChestRef && cell !== openChestRef.i) closeChest();                                         // a click elsewhere closes the chest
-      if (!player.dead && !player.sleeping && !player.inside && !clickAction(p[0], p[1], cell)) walkTo(cell, { dx: p[0] - cx, dy: p[1] - cy });   // with a tool: chop, hunt, cut…
-      else if (double) startRepeat(cell);                // double click with the axe or the shovel: keep going on the nearby ones
+      closeContainersExcept(cell);                                                                      // a click elsewhere closes the chest or cage
+      if (!player.dead && !player.sleeping && !player.inside) {
+        if (!clickAction(p[0], p[1], cell)) walkTo(cell, { dx: p[0] - cx, dy: p[1] - cy });   // with a tool: chop, hunt, cut…; otherwise walk (and gather)
+        if (repeat) startRepeat(cell);                   // Ctrl+click: keep going on the nearby ones (chop, dig, cut branches, gather)
+      }
     }
   }
   if (gesture?.type === "orbit" && !gesture.drag && e.button === 2) {   // right click without dragging: drop what is in the hand there
@@ -71,7 +74,7 @@ canvas.addEventListener("pointerup", e => {
     if (pk && hand.item && !player.dead && !player.sleeping && !player.inside) {
       const cell = pk.cell ?? idx(...toHex(pk.x, pk.y));
       player.task = null; player.repeat = null; cancelWork(player.job ? "I stopped what I was doing" : null);
-      dropAction(cell);
+      closeContainersExcept(cell); dropAction(cell);
     }
   }
   release();
@@ -103,26 +106,24 @@ $("tilt").addEventListener("input", e => { cam.tilt = +e.target.value; });
 $("rot").addEventListener("input", e => { cam.rot = +e.target.value; });
 $("compass").onclick = () => { cam.rot = 0; };
 $("mapButton").onclick = toggleMap;
-$("restartGame").onclick = () => {                     // new game: new world, empty inventory and hand
-  resetUpgrades(); hand.item = null; hand.torchLeft = 0; player.dead = false; closeCage();
-  if (player.sleeping) wakeUp(); buildMode = null; player.inside = null; openChestRef = null; renderContainers();
-  $("death").classList.remove("visible");
-  withLoading("Creating a new world…", () => { world.seed = 1 + Math.floor(Math.random() * 1e9); generate(); renderInventory(); });
-};
+$("wakeAfterDeath").onclick = wakeAfterDeath;            // dying does not change the map: the next morning you wake up somewhere safe
 document.addEventListener("pointerdown", e => {          // a click anywhere outside the workshop folds its open menu
   if (workshopOpen && !e.target.closest?.("#workshop")) { workshopOpen = null; renderWorkshop(); }
 }, true);
+// Ctrl+click (Cmd+click) on a slot of the inventory or of an open container: use what is in the hand on it (combine.js).
+// On a Mac, Ctrl+click comes as a right click and fires no "click", so it is caught on pointerdown, before the drag starts
+for (const id of ["inventory", "containers"]) {
+  $(id).addEventListener("pointerdown", e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const r = e.target.closest(".slot[data-k]"); if (!r) return;
+    e.preventDefault(); e.stopPropagation(); ignoreClick = true;
+    useHandOn(+r.dataset.k, r.dataset.zone || "inv");
+  }, true);
+  $(id).addEventListener("contextmenu", e => e.preventDefault());
+}
 $("inventory").addEventListener("click", e => {          // slot → to the hand (swap); hand → to the inventory
   const r = e.target.closest(".slot"); if (!r) return;
-  if (r.id === "basketButton") toggleBasket();
-  else if (r.dataset.hand) storeHand(); else if (r.dataset.k !== undefined) swapSlot(+r.dataset.k);
-});
-$("cagePanel").addEventListener("click", e => {
-  const j = openCageRef; if (!j) return;
-  if (e.target.closest("[data-close]")) return closeCage();
-  const s = e.target.closest("[data-take]"); if (s) return takeFromCage(j, +s.dataset.take);
-  const b = e.target.closest("[data-action]"); if (!b || b.disabled) return;
-  ({ putIn: putInCage, food: giveFood, water: giveWater, gather: pickUpCage })[b.dataset.action](j);
+  if (r.dataset.hand) storeHand(); else if (r.dataset.k !== undefined) swapSlot(+r.dataset.k);
 });
 $("workshop").addEventListener("click", e => {
   const g = e.target.closest("[data-group]");
@@ -136,13 +137,9 @@ $("newWorld").onclick = () => {
     world.seed = 1 + Math.floor(Math.random() * 1e9); generate();
   });
 };
-$("testMap").onclick = () => {
-  withLoading("Creating the test map…", () => {         // the size changes only with the new world (the old one keeps moving until then)
-    world.testMap = true; world.N = TEST_RADIUS;
-    world.seed = 1 + Math.floor(Math.random() * 1e9); generate();
-    for (const t of TEST_RESOURCES) { const missing = 500 - amountOf(t); if (missing > 0) store(t, missing); }   // to test without gathering
-    notify("Test map: I have 500 of each natural resource");
-  });
+$("fillInventory").onclick = () => {                   // testing: the natural resources without gathering, on the same map
+  for (const t of TEST_RESOURCES) { const missing = STACK_LIMIT.inventory - amountOf(t); if (missing > 0) store(t, missing); }   // a full slot of each
+  notify(`I have ${STACK_LIMIT.inventory} of each natural resource`);
 };
 const TEST_RESOURCES = ["branches", "stones", "grass", "berries", "flowers", "fruit", "coconut", "pineCone", "hide", "bones"];
 $("nextDay").onclick = skipToNextDay;
@@ -173,10 +170,11 @@ function togglePopup(id) {
 }
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
-  if (/^Digit\d$/.test(e.code)) {                         // 1-9 and 0: inventory slots; with Shift, terrain brushes
+  if (/^Digit\d$/.test(e.code)) {                         // 1-9 and 0: inventory slots; with Ctrl, the basket's; with Shift, terrain brushes
     const n = +e.code.slice(5);
     e.preventDefault();
     if (e.shiftKey) { const h = ["move", "deep", "medium", "water", "sand", "grass"][n]; if (h) selectTool(h); }
+    else if (e.ctrlKey) { if (!player.dead && n >= 1 && SLOTS + n - 1 < inventory.length) swapSlot(SLOTS + n - 1); }   // Ctrl+1…5: the basket's slots
     else if (!player.dead) swapSlot((n + 9) % 10);
     return;
   }

@@ -57,8 +57,8 @@ function placeElements() {
   // trees: half young (they do not grow until the 2nd spring) and half adult and mature
   const nowDay = gameDay();
   world.trees = []; world.springAssigned = 0; world.regrowths = []; world.bushes = []; world.groundFruits = []; world.sprouts = 0;
-  world.sowings = []; world.hiveDist = null; world.winterDeaths = undefined; world.fires = []; world.fellings = [];
-  world.traps = []; world.cages = []; world.fenceAt = new Map(); world.houses = []; world.houseAt = new Map(); if (typeof closeCage === "function" && $("cagePanel")) closeCage();
+  world.sowings = []; world.hiveDist = null; world.winterDeaths = undefined; world.fires = []; world.fellings = []; world.wildfire = [];
+  world.traps = []; world.cages = []; world.chests = []; world.fenceAt = new Map(); world.houses = []; world.houseAt = new Map(); if (typeof closeCage === "function") closeCage();
   for (let i = 0; i < n; i++) for (const o of objs(i)) {
     if (TREES.has(o.type)) {
       o.adultSince = hash(o.sem, 64) < 0.5 ? Infinity : nowDay - (GROW_DURATION + MATURE_DAYS + hash(o.sem, 65) * YEAR_DAYS);

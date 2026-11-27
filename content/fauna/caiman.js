@@ -2,7 +2,9 @@
 defineFauna({
   id: "caiman",
   name: { one: "Caiman", many: "Caimans" },
-  tags: ["drawnInWater"],
+  tags: ["drawnInWater", "huntable"],
+  meat: 3, hide: 1, bones: 2,                       // when its meat is cut with the knife
+  asTarget: { hit: 0.78, axeOnLand: true },         // hard to hit (bow about 50% at 3 cells); the axe only when it is on land; a miss bothers it (provoke)
   zone: i => world.lake[i] === 1 || (world.lakeShore[i] === 1 && !blocked(i)), step: 1, speed: 0.5, wait: [6, 18],
   grows: { min: 0.4, days: 40 },
   life: { min: 400, max: 600 },
@@ -11,6 +13,7 @@ defineFauna({
     active: "always", mode: "ambusher", success: 0.25, restTime: 2, radius: 2, sates: 0.5,
     onlyWeak: new Set(["deer", "peccary"]), onlyShore: true, attackRadius: 1.3,   // big ones, only when weak
     threatensPlayer: "shore",                       // in the dark it attacks the character on the lake shore
+    struggle: { bite: 30, preyBite: 40, every: 3, reach: 1.2, kills: "A caiman dragged you into the lake." },   // it grabs and bites again and again
   },
   provoke: {                                        // walking up to it 3 times in a day (a bit closer than to the jaguar): it lunges, by day too
     radius: 3, times: 3, charge: 6, reach: 1.2,
@@ -31,11 +34,12 @@ defineFauna({
     },
   },
   draw(it) {                     // long and almost submerged: back, snout, tail and eyes
-    const a = it.a, d = a.dir, f = sizeOf(a) * 1.1, c = Math.cos(d), s = Math.sin(d);
+    const a = it.a, d = a.dir, f = sizeOf(a) * 1.1, c = Math.cos(d), s = Math.sin(d), dead = a.dead;
     ctx.save(); ctx.globalAlpha *= 0.88;
-    ctx.beginPath(); groundEllipse(it.x - c * 0.62 * f, it.y - s * 0.62 * f, 0.36 * f, 0.06 * f, d + Math.sin(a.phase * 1.5) * 0.12); ctx.fillStyle = "#3a5229"; ctx.fill();
-    ctx.beginPath(); groundEllipse(it.x, it.y, 0.5 * f, 0.13 * f, d); ctx.fillStyle = "#3f5b2e"; ctx.fill();
-    ctx.beginPath(); groundEllipse(it.x + c * 0.55 * f, it.y + s * 0.55 * f, 0.24 * f, 0.07 * f, d); ctx.fillStyle = "#4d6d37"; ctx.fill();
+    ctx.beginPath(); groundEllipse(it.x - c * 0.62 * f, it.y - s * 0.62 * f, 0.36 * f, 0.06 * f, d + (dead ? 0.25 : Math.sin(a.phase * 1.5) * 0.12)); ctx.fillStyle = dead ? "#6f7458" : "#3a5229"; ctx.fill();
+    ctx.beginPath(); groundEllipse(it.x, it.y, 0.5 * f, 0.13 * f, d); ctx.fillStyle = dead ? "#b9b48f" : "#3f5b2e"; ctx.fill();   // dead: belly up, pale
+    ctx.beginPath(); groundEllipse(it.x + c * 0.55 * f, it.y + s * 0.55 * f, 0.24 * f, 0.07 * f, d); ctx.fillStyle = dead ? "#9c9878" : "#4d6d37"; ctx.fill();
+    if (dead) { ctx.restore(); return; }                // no eyes showing
     for (const side of [-1, 1]) {
       const q = project(it.x + c * 0.42 * f - s * 0.06 * side * f, it.y + s * 0.42 * f + c * 0.06 * side * f);
       if (q) circle(q[0], q[1] - 2, cam.zoom * q[2] * 0.03, "#c9c04a");

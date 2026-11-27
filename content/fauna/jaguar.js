@@ -12,10 +12,11 @@ defineFauna({
     preys: new Set(["deer", "peccary", "coati", "armadillo", "rabbit"]), cycle: 8, dies: 18, active: "always", mode: "chase",
     view: 9, attack: 2.5, huntSpeed: 4, success: 0.3, restTime: 2, chaseTime: 10, radius: 5, sates: 0.6,
     hungryBig: true,                                // it only attacks healthy deer and peccaries when very hungry
-    threatensPlayer: "stalk",                       // in the dark it stalks, charges and kills the character
+    threatensPlayer: "stalk",                       // in the dark it stalks, charges and attacks the character
+    struggle: { bite: 30, preyBite: 35, every: 2.5, reach: 0.4, kills: "A jaguar caught you and would not let go." },   // it grabs and bites again and again
   },
-  nearPlayer: {                                     // in daylight: it watches the character and slinks off if it comes too close
-    retreat: 2.5, watch: 6, pace: 0.6,
+  nearPlayer: {                                     // in daylight: it watches the character (who can walk away); coming closer than 2.5 cells makes it attack
+    retreat: 2.5, watch: 6, pace: 0.6, attacksClose: true,
     says: ["A jaguar is watching me…", "Those yellow eyes are following me", "A jaguar stares at me from the trees"],
   },
   chasesOff: { ids: new Set(["fox"]), radius: 3 },  // it charges foxes that come near, and they run

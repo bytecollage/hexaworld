@@ -2,6 +2,7 @@
 defineStructure({
   id: "chest",
   name: "Chest",
+  hoverable: true,                                  // lit up under the mouse, like the house and the cage
   draw(it) {                     // rough planks between round branch posts, a plank lid tied down with two ropes around the box
     const d = hash(it.i, 330) * TAU, x = it.x, y = it.y, L = 0.32, Wd = 0.22, Hh = 0.27, sem = it.o.sem ?? it.i;
     const [scl] = sizes(it), lw = Math.max(0.8, scl * 0.008);
