@@ -12,6 +12,8 @@ There is no server, build step or install.
 
 - [BEHAVIOR.md](BEHAVIOR.md) — the game rules.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how the code is organized and how to change it.
+- [hexaworld.html](hexaworld.html) — the element map: crafting tree, where things come from, the ecosystem and what each tool does ([online](https://bytecollage.github.io/hexaworld/hexaworld.html)).
+- [CONTENT_MODEL_PLAN.md](CONTENT_MODEL_PLAN.md) — plan for a common content model and new ecosystems (desert, arctic).
 
 ## License
 

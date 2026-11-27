@@ -6,9 +6,12 @@
 .smoke-*.html
 .gallery-*.html
 .fp-*.html
+.capture-*.html
+.capture-*.html.dom
 
 
 # local tool output
 *.log
 .smoke-*.profile/
 .fp-*.profile/
+.capture-*.profile/

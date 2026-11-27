@@ -37,6 +37,9 @@ content/
   world/              world features: nest, burrow, outcrops
   structures/         campfire, bonfire, trap, cage, chest, fence, gate, hut, house
 tools/                verification scripts (see "Verifying a refactor")
+  elements/           generator of hexaworld.html (see "The element map")
+hexaworld.html        the element map: how every element depends on and interacts with the others (generated)
+CONTENT_MODEL_PLAN.md plan to make every definition declare all its relations (traits, verbs, terrains, biomes)
 world.old.html        the original single-file game in Spanish (reference and source of the baseline)
 index.old.html        the earlier hex-map prototype (reference)
 ```
@@ -322,9 +325,23 @@ Other dev-only files in `tools/`:
 | `rename.js`, `words.json` | The token-aware renamer and the Spanish→English word map used for the translation. |
 | `fingerprint.js`, `fp-adapter-*.js`, `run-fp.sh` | The pieces the commands above use. |
 
+## The element map
+
+`hexaworld.html` is a static page (open it by double-click) that shows the crafting tree, where each resource comes
+from, the ecosystem and what each held thing does, with a card per element and its picture as the game draws it.
+It is **generated**; never edit it by hand. The comment at its top explains it.
+
+| Command | What it does |
+|---|---|
+| `node tools/elements/build.js` | Rewrites `hexaworld.html` from the content definitions (`tools/elements/extract.js` reads them without a browser), `RECIPES` and `BUILDS`. |
+| `tools/elements/capture.sh` | Draws every animal, plant and world feature with the game (headless Chrome, fixed seeds, no wind) and saves them with the inventory and workshop icons in `tools/elements/pictures.json`. Run it when a drawing or an icon changes. |
+
+- The page layout is `tools/elements/template.html`.
+- Rules coded in the engine rather than in traits (what chopping gives, what each tool does, a few ecosystem links) are written by hand in `tools/elements/build.js` ("ENGINE RULES"). **When such a rule changes, update it there too** and regenerate. [CONTENT_MODEL_PLAN.md](CONTENT_MODEL_PLAN.md) describes how to turn them into traits.
+
 ## Conventions
 
 - One content file per species, plant, item, feature or structure. Start it with a one-line comment saying what it is.
 - Engine code asks for traits, not ids: add a field to the definition and read it.
-- Update BEHAVIOR.md with every behavior change.
+- Update BEHAVIOR.md with every behavior change, and regenerate the element map (`node tools/elements/build.js`) when content or its relations change.
 - Messages to the player go through `notify()` (src/ui/notice.js) and are written in the character's voice (first person). For a moment with several lines, add a list to `SAY` and call `notify(SAY.key)` (an entry may be a function of extra arguments: `notify(SAY.crafted, name)`).

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<!--
+  =====================================================================================================
+  hexaworld element map — GENERATED FILE, do not edit by hand (generated on {{GENERATED}})
+  =====================================================================================================
+  What it is
+    A static page (open it by double-click, like the game) that shows how every element of the game depends on
+    and interacts with the others:
+      - Crafting tree: what each workshop thing costs, what must be made first (skills) and which tools are carried.
+      - Where things come from: every way to get each resource, the tool it needs and the engine file that does it.
+      - Ecosystem: who eats whom, pollination, seeds, carcasses, homes and rivals.
+      - In your hand: what each held thing does when you click on the map; predators dangerous to you; fuel;
+        what captives eat.
+    Click any element to see its card: all its relations, its raw-material totals and its learning path, with its
+    picture as the game draws it.
+
+  Where the data comes from
+    - The content definitions (content/, listed in content/registry.js), read without a browser by
+      tools/elements/extract.js, and the workshop's RECIPES (src/player/crafting.js) and BUILDS
+      (src/player/building.js).
+    - Rules that live in the engine code rather than in traits (amounts when chopping, what each tool does, a few
+      ecosystem links) are written by hand in tools/elements/build.js ("ENGINE RULES"), from BEHAVIOR.md.
+      CONTENT_MODEL_PLAN.md describes how to turn them into traits so that nothing is written by hand.
+    - Pictures: tools/elements/pictures.json, made from the running game by tools/elements/capture.sh (map
+      drawings cropped from fixed-seed worlds, plus the inventory and workshop icons).
+
+  How to regenerate it (from the repository root; Node, and Chrome for the pictures)
+    tools/elements/capture.sh          only when a drawing or an icon changed (rewrites pictures.json)
+    node tools/elements/build.js       rewrites this file (hexaworld.html)
+  The page itself is tools/elements/template.html: change the layout there, never here.
+  =====================================================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hexaworld element map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Signika:wght@500;600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: a technical reference for the people who build the game
+   IDEA the game's own workshop ladder: wood band, rope-tan materials, every element a hex tile
+   PICTURE layered graphs (crafting tree, food web) where a click traces everything upstream and downstream
+   COLOUR parchment ground, dark wood band, one hue per kind of element taken from the game's palette
+   TYPE Signika (rustic, sturdy) + Source Sans 3
+   LAYOUT wood band with title, finding, search and tabs; view left, element card right; phone: stacked, graph scrolls sideways */
+:root{color-scheme:light dark;--bg:light-dark(#fbf6ea,#17120c);--ink:light-dark(#2a1d10,#f2e8d2);--mute:light-dark(#76664f,#b3a58c);--line:light-dark(#e3d6bb,#3a2e20);--panel:light-dark(#ffffff,#211a12);--wood:light-dark(#4a2f17,#2b1c0e);--woodInk:#f5e7c4;--hi:#e3a21a;
+--k-resource:light-dark(#a87b43,#c99a5e);--k-craft:light-dark(#b8862a,#d8a845);--k-tool:light-dark(#4f5d6b,#8fa0b2);--k-fire:light-dark(#d0581f,#ee7a3e);--k-capture:light-dark(#7d5a2e,#b68a52);--k-build:light-dark(#6b4524,#a8774a);--k-plant:light-dark(#3f7f2f,#6db55a);--k-animal:light-dark(#77902a,#a9c24f);--k-predator:light-dark(#b23a2a,#e0634f);--k-water:light-dark(#2a74a8,#5aa6dc);--k-feature:light-dark(#857d70,#a99f90);--k-special:light-dark(#76589a,#a68bcc)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 "Source Sans 3",system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:Signika,system-ui,sans-serif;line-height:1.08;letter-spacing:-.01em;margin:0}
+button,input{font:inherit;color:inherit}
+.top{background:var(--wood);color:var(--woodInk);padding:22px max(4vw,16px) 0}
+.topin{max-width:1360px;margin:0 auto}
+.head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:16px 32px;align-items:end}
+h1{font-size:clamp(30px,4vw,44px);font-weight:700}
+.find{margin:8px 0 0;max-width:68ch;color:#e9d9b4}
+.find b{color:#fff}
+.search{position:relative}
+.search label{display:block;font-size:14px;color:#e9d9b4;margin-bottom:4px}
+#q{width:100%;height:44px;border-radius:8px;border:1px solid #8a6a3c;background:#2b1a0b;color:#fff;padding:0 12px;font-size:16px}
+#q:focus{outline:2px solid var(--hi);outline-offset:1px}
+.tabs{display:flex;gap:4px;margin-top:18px;overflow-x:auto}
+.tabs a{flex:none;display:block;padding:11px 16px 12px;border-radius:8px 8px 0 0;color:#e9d9b4;text-decoration:none;font-family:Signika,sans-serif;font-weight:600;font-size:16px}
+.tabs a:hover{background:#ffffff14;color:#fff}
+.tabs a[aria-current]{background:var(--bg);color:var(--ink)}
+.tabs a:focus-visible{outline:2px solid var(--hi)}
+main{max-width:1360px;margin:0 auto;padding:20px max(4vw,16px) 48px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}
+.view[hidden]{display:none}
+.intro{margin:0 0 12px;color:var(--mute);max-width:80ch}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;margin:0 0 10px;color:var(--mute)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend svg{width:28px;height:10px;overflow:visible}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.chip{min-height:36px;padding:4px 12px;border-radius:18px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed=false]{opacity:.5;text-decoration:line-through}
+.chip i{width:12px;height:3px;border-radius:2px;display:inline-block}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.graph{display:block}
+.graph text{font-size:13px;fill:var(--ink);font-family:"Source Sans 3",sans-serif}
+.graph .col{font:600 13px Signika,sans-serif;fill:var(--mute)}
+.graph .n{cursor:pointer}
+.graph .n rect{fill:var(--panel);stroke:color-mix(in srgb,var(--c) 75%,var(--ink));stroke-width:1.5}
+.graph .n:hover rect{stroke:var(--ink)}
+.graph .n.sel rect{stroke:var(--hi);stroke-width:2.5}
+.graph .dim{opacity:.3}
+.graph .n.dim{opacity:1}
+.graph .n.dim rect{stroke-dasharray:3 3;stroke-opacity:.45}
+.graph .n.dim text,.graph .n.dim path{opacity:.3}
+.graph path.e{fill:none;stroke-width:1.4}
+.graph .q{font-size:11px;font-weight:600;paint-order:stroke;stroke:var(--panel);stroke-width:3px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 14px 10px}
+.card h3{font-size:19px;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding:7px 0;border-top:1px solid var(--line);font-size:15px}
+.row:first-of-type{border-top:0}
+.row .lk{margin-right:8px}.row small,.file{color:var(--mute);font-size:13px}
+.tool{display:inline-block;font-size:13px;font-weight:600;padding:1px 8px;border-radius:10px;background:color-mix(in srgb,var(--k-tool) 16%,transparent);color:var(--ink);white-space:nowrap}
+.tool.hand{background:color-mix(in srgb,var(--k-resource) 18%,transparent)}
+.tool.nature{background:color-mix(in srgb,var(--k-plant) 18%,transparent)}
+.hex{width:14px;height:16px;flex:none;display:inline-block;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);background:var(--c)}
+.lk{background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;display:inline-flex;align-items:center;gap:5px;text-align:left}
+.lk:hover{text-decoration-color:currentColor}
+.lk:focus-visible,.chip:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:15px}
+th,td{text-align:left;padding:9px 10px;border-top:1px solid var(--line);vertical-align:top}
+th{font-family:Signika,sans-serif;font-weight:600;border-top:0;font-size:14px;color:var(--mute)}
+td .lk{margin:0 8px 2px 0}
+.sub{margin:28px 0 10px;font-size:22px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:20px}
+.bar{display:grid;grid-template-columns:9em minmax(0,1fr) 3.5em;gap:8px;align-items:center;font-size:14px;padding:3px 0}
+.bar div{height:12px;border-radius:3px;background:var(--k-fire)}
+.bar span:last-child{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+aside{position:sticky;top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;max-height:calc(100vh - 24px);overflow:auto}
+aside h2{font-size:28px;display:flex;align-items:center;gap:10px}
+aside h2 .hex{width:22px;height:25px}
+.pic{flex:none;width:64px;height:64px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);overflow:hidden}
+.pic img{width:100%;height:100%;object-fit:cover;display:block}
+.pic.ui img{width:78%;height:78%;object-fit:contain}
+.pic span{font-size:38px;line-height:1}
+aside h2{min-height:64px}
+.kind{color:var(--mute);font-size:14px;margin:2px 0 10px}
+aside h3{font-size:15px;margin:16px 0 4px;color:var(--mute)}
+aside ul{list-style:none;margin:0;padding:0}
+aside li{padding:3px 0;font-size:15px}
+aside li small{color:var(--mute)}
+.totals{display:flex;flex-wrap:wrap;gap:6px}
+.totals span{background:color-mix(in srgb,var(--k-resource) 16%,transparent);border-radius:6px;padding:2px 8px;font-size:14px;white-space:nowrap}
+.note{font-size:14px;color:var(--mute);margin-top:6px}
+.foot{max-width:1360px;margin:0 auto;padding:0 max(4vw,16px) 40px;color:var(--mute);font-size:14px}
+.foot a{color:inherit}
+.foot code{font-size:13px}
+@media(max-width:980px){main{grid-template-columns:minmax(0,1fr)}aside{position:static;max-height:none}}
+@media(max-width:640px){.head{grid-template-columns:minmax(0,1fr)}.stack thead{display:none}.stack tr{display:grid;padding:8px 0;border-top:1px solid var(--line)}.stack td{border:0;padding:3px 10px;display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px}.stack td::before{content:attr(data-l);color:var(--mute);font-size:13px}}
+@media(prefers-reduced-motion:no-preference){.graph g,.graph path{transition:opacity .25s}}
+</style>
+</head>
+<body>
+<header class="top"><div class="topin">
+  <div class="head">
+    <div>
+      <h1>hexaworld element map</h1>
+      <p class="find" id="find">Every species, plant, item and building in the game, and how they depend on each other.</p>
+    </div>
+    <div class="search"><label for="q">Find an element</label><input id="q" list="names" autocomplete="off" placeholder="bow, deer, resin…"><datalist id="names"></datalist></div>
+  </div>
+  <nav class="tabs" aria-label="Views">
+    <a href="#tree" data-v="tree">Crafting tree</a><a href="#sources" data-v="sources">Where things come from</a><a href="#eco" data-v="eco">Ecosystem</a><a href="#hand" data-v="hand">In your hand</a>
+  </nav>
+</div></header>
+<main>
+  <div>
+    <section class="view" id="v-tree">
+      <p class="intro">What you need to make each thing in the workshop. Columns are the length of the chain behind each thing, left to right. Click an element to light up everything it needs and everything it opens.</p>
+      <div class="legend"><span><svg><line x1="0" y1="5" x2="28" y2="5" stroke="currentColor" stroke-width="1.6"/></svg>material used up (with amount)</span><span><svg><line x1="0" y1="5" x2="28" y2="5" stroke="var(--k-craft)" stroke-width="1.6" stroke-dasharray="5 3"/></svg>must be made once first</span><span><svg><line x1="0" y1="5" x2="28" y2="5" stroke="var(--k-tool)" stroke-width="2" stroke-dasharray="1.5 3"/></svg>tool carried, not used up</span></div>
+      <div class="scroll"><svg class="graph" id="g-tree" role="img" aria-label="Crafting tree: raw materials on the left, crafts, tools and buildings to the right"></svg></div>
+    </section>
+    <section class="view" id="v-sources" hidden>
+      <p class="intro">Every way to get each resource: the thing you take it from, what you need in your hand, and the engine file that does it. Crafted materials come from the workshop (see the crafting tree).</p>
+      <div class="cards" id="srcCards"></div>
+    </section>
+    <section class="view" id="v-eco" hidden>
+      <p class="intro">Who eats whom and how plants, animals and places keep each other going. Columns follow the food chain. Turn kinds of relation on and off; click an element to see only its relations.</p>
+      <div class="chips" id="ecoChips"></div>
+      <div class="scroll"><svg class="graph" id="g-eco" role="img" aria-label="Food web: plants, fallen fruit, plant eaters and prey, hunters, scavengers"></svg></div>
+      <p class="note" id="lonely"></p>
+    </section>
+    <section class="view" id="v-hand" hidden>
+      <p class="intro">What each thing does when you hold it and click on the map. Targets are worked out from the traits in the content files (huntable, stunnable, plantable, outcrop…), so this table follows the content.</p>
+      <table class="stack"><thead><tr><th>In hand</th><th>Click on</th><th>What happens</th><th>Gives</th></tr></thead><tbody id="handRows"></tbody></table>
+      <div class="two">
+        <div><h2 class="sub">Dangerous to you</h2><div id="danger"></div></div>
+        <div><h2 class="sub">Fuel for a fire</h2><p class="note" style="margin-top:0">Game hours one unit adds to a campfire or bonfire.</p><div id="fuel"></div></div>
+      </div>
+      <h2 class="sub">What captives eat in a cage</h2><div id="captive" class="cards"></div>
+    </section>
+  </div>
+  <aside id="card" aria-live="polite"></aside>
+</main>
+<footer class="foot">Generated on {{GENERATED}} from the game files. To refresh it, run <code>node tools/elements/build.js</code> (and <code>tools/elements/capture.sh</code> when a drawing changed). Rules: <a href="BEHAVIOR.md">BEHAVIOR.md</a> · code: <a href="ARCHITECTURE.md">ARCHITECTURE.md</a> · next steps: <a href="CONTENT_MODEL_PLAN.md">CONTENT_MODEL_PLAN.md</a> · <a href="index.html">play the game</a></footer>
+<script>
+{
+const D = /*DATA*/null;
+const N = D.nodes;
+const KIND = { resource: "Resource", craft: "Craft", tool: "Tool", fire: "Fire", capture: "Capture", build: "Construction", plant: "Plant", animal: "Animal", predator: "Predator", feature: "World feature", special: "World" };
+const kc = id => { const n = N[id]; if (!n) return "--k-feature"; return n.sub === "water" && n.kind !== "predator" ? "--k-water" : "--k-" + n.kind; };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const nm = id => N[id]?.name ?? id;
+const hex = id => `<i class="hex" style="--c:var(${kc(id)})"></i>`;
+const lk = id => N[id] ? `<button class="lk" data-id="${esc(id)}">${hex(id)}${esc(nm(id))}</button>` : esc(id);
+const TOOLNAME = { hand: "by hand", nature: "on its own", workshop: "workshop", seed: "seed", ctrl: "Ctrl+click", trap: "trap", stones: "stones", torch: "torch" };
+const tl = t => `<span class="tool ${t === "hand" ? "hand" : t === "nature" ? "nature" : ""}">${esc(TOOLNAME[t] || nm(t))}</span>`;
+let sel = "bow", view = "tree";
+
+// ---- derived facts about the crafting tree
+const prodSet = new Set(D.tree.map(e => e.t));
+const costOf = id => D.tree.filter(e => e.t === id && e.r === "cost");
+function rawTotals(id, mult = 1, acc = {}) {
+  for (const e of costOf(id)) { if (costOf(e.f).length) rawTotals(e.f, mult * e.q, acc); else acc[e.f] = (acc[e.f] || 0) + mult * e.q; }
+  return acc;
+}
+function closure(id, dir, rels, edges) {
+  const seen = new Set(), st = [id];
+  while (st.length) { const x = st.pop(); for (const e of edges) { if (!rels.includes(e.r)) continue; const [a, b] = dir === "up" ? [e.t, e.f] : [e.f, e.t]; if (a === x && !seen.has(b)) { seen.add(b); st.push(b); } } }
+  seen.delete(id); return seen;
+}
+const tier = {};
+const tierOf = id => { if (tier[id] !== undefined) return tier[id]; const ins = D.tree.filter(e => e.t === id); if (!ins.length) return tier[id] = 0;
+  const need = ins.filter(e => e.r !== "tool").map(e => tierOf(e.f)), tools = ins.filter(e => e.r === "tool").map(e => tierOf(e.f));   // carrying one of the tools is enough
+  return tier[id] = 1 + Math.max(...need, tools.length ? Math.min(...tools) : 0); };
+Object.keys(N).forEach(id => { if (prodSet.has(id) || D.tree.some(e => e.f === id)) tierOf(id); });
+const learnPath = id => [...closure(id, "up", ["learn"], D.tree)];
+{
+  const deepest = Object.keys(tier).sort((a, b) => tier[b] - tier[a] || learnPath(b).length - learnPath(a).length)[0];
+  const rt = rawTotals(deepest), units = Object.values(rt).reduce((a, b) => a + b, 0);
+  const rel = D.tree.length + D.eco.length + D.src.length;
+  document.getElementById("find").innerHTML = `<b>${Object.keys(N).length}</b> elements joined by <b>${rel}</b> relations, all read from the content files. The longest chain ends in the <b>${esc(nm(deepest))}</b>: ${learnPath(deepest).length} things to make first and ${units} units of raw material.`;
+}
+
+// ---- layered graph
+function layout(ids, edges, colOf, orderKey) {
+  const cols = [];
+  for (const id of ids) (cols[colOf(id)] ||= []).push(id);
+  for (const c of cols) c?.sort(orderKey);
+  const pos = {};
+  const idx = () => cols.forEach(c => c?.forEach((id, i) => pos[id] = i / Math.max(1, c.length - 1)));
+  idx();
+  for (let it = 0; it < 8; it++) {
+    for (const c of cols) {
+      if (!c) continue;
+      const bc = id => { const nb = edges.filter(e => e.f === id || e.t === id).map(e => pos[e.f === id ? e.t : e.f]).filter(v => v !== undefined); return nb.length ? nb.reduce((a, b) => a + b, 0) / nb.length : pos[id]; };
+      const b = Object.fromEntries(c.map(id => [id, bc(id)]));
+      c.sort((x, y) => b[x] - b[y]); c.forEach((id, i) => pos[id] = i / Math.max(1, c.length - 1));
+    }
+  }
+  return cols.map(c => c || []);
+}
+const ER = { cost: ["currentColor", ""], learn: ["var(--k-craft)", "5 3"], tool: ["var(--k-tool)", "1.5 3"],
+  eats: ["var(--k-plant)", ""], starving: ["var(--k-plant)", "4 3"], hunts: ["var(--k-predator)", ""], carcass: ["var(--k-special)", ""], fertilizes: ["var(--k-special)", "4 3"],
+  cycle: ["var(--k-resource)", "4 3"], pollinates: ["var(--hi)", ""], home: ["var(--k-feature)", "1.5 3"], rival: ["var(--k-predator)", "6 3"] };
+function drawGraph(svg, cols, edges, colNames, related, opts = {}) {
+  const NH = 28, GAP = 9, TOP = 40, SIDE = 14, avail = svg.parentElement.clientWidth - 2;
+  const NW = Math.max(124, Math.min(150, (avail - 2 * SIDE - (cols.length - 1) * 44) / cols.length));
+  const rows = Math.max(...cols.map(c => c.length));
+  const W = Math.max(avail, cols.length * NW + (cols.length - 1) * 44 + 2 * SIDE), H = TOP + rows * (NH + GAP) + 16;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H);
+  const step = (W - 2 * SIDE - NW) / Math.max(1, cols.length - 1), P = {};
+  cols.forEach((c, ci) => { const off = (rows - c.length) * (NH + GAP) / 2; c.forEach((id, i) => P[id] = { x: SIDE + ci * step, y: TOP + off + i * (NH + GAP) }); });
+  const on = id => !related || related.has(id);
+  let s = `<defs><marker id="ah${svg.id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="context-stroke"/></marker></defs>`;
+  s += cols.map((c, ci) => c.length ? `<text class="col" x="${SIDE + ci * step}" y="22">${esc(colNames[ci] || "")}</text>` : "").join("");
+  let labels = "", front = "";
+  for (const e of edges) {
+    const a = P[e.f], b = P[e.t]; if (!a || !b) continue;
+    const [col, dash] = ER[e.r] || ["currentColor", ""];
+    const lit = on(e.f) && on(e.t) && (!related || opts.edgeLit?.(e) !== false);
+    let d, x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+    if (b.x > a.x) { const m = (x2 - x1) / 2; d = `M${x1} ${y1}C${x1 + m} ${y1} ${x2 - m} ${y2} ${x2 - 2} ${y2}`; }
+    else { x1 = a.x + NW / 2; y1 = a.y + NH; x2 = b.x + NW / 2; y2 = b.y + (b.y > a.y ? 0 : NH); const k = Math.max(40, Math.abs(x2 - x1) / 3); d = `M${x1} ${y1}C${x1} ${y1 + k} ${x2} ${y2 + (b.y > a.y ? -k : k)} ${x2} ${y2}`; }
+    const path = `<path class="e${lit ? "" : " dim"}" d="${d}" stroke="${col}" stroke-dasharray="${dash}" stroke-opacity="${e.r === "cost" ? .55 : .85}" marker-end="url(#ah${svg.id})"><title>${esc(nm(e.f))} → ${esc(nm(e.t))}${e.note ? ": " + esc(e.note) : ""}</title></path>`;
+    if (related && lit) front += path; else s += path;   // highlighted relations go over the cards
+    if (e.q && lit && (!related || related.size < 40)) labels += `<text class="q" x="${x2 - 6}" y="${y2 - 4}" text-anchor="end">${e.q}</text>`;
+  }
+  for (const [id, p] of Object.entries(P)) {
+    s += `<g class="n${id === sel ? " sel" : ""}${on(id) ? "" : " dim"}" data-id="${esc(id)}" tabindex="0" role="button" aria-label="${esc(nm(id))}"><rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" style="--c:var(${kc(id)})"/><path d="M${p.x + 13} ${p.y + 6}l6 3.5v7l-6 3.5l-6-3.5v-7z" fill="var(${kc(id)})"/><text x="${p.x + 25}" y="${p.y + 18.5}">${esc(nm(id).length > (NW - 32) / 7 ? nm(id).slice(0, Math.floor((NW - 32) / 7) - 1) + "…" : nm(id))}</text></g>`;
+  }
+  svg.innerHTML = s + front + labels;
+}
+const byName = (a, b) => nm(a).localeCompare(nm(b));
+const kindOrder = ["resource", "plant", "craft", "fire", "tool", "capture", "build", "animal", "predator", "feature", "special"];
+const byKind = (a, b) => kindOrder.indexOf(N[a]?.kind) - kindOrder.indexOf(N[b]?.kind) || byName(a, b);
+
+function drawTree() {
+  const ids = Object.keys(tier);
+  const cols = layout(ids, D.tree, id => tier[id], byKind);
+  let rel = null;
+  if (tier[sel] !== undefined) rel = new Set([sel, ...closure(sel, "up", ["cost", "learn", "tool"], D.tree), ...closure(sel, "down", ["cost", "learn", "tool"], D.tree)]);
+  const up = rel && closure(sel, "up", ["cost", "learn", "tool"], D.tree), down = rel && closure(sel, "down", ["cost", "learn", "tool"], D.tree);
+  drawGraph(document.getElementById("g-tree"), cols, D.tree, ["Raw materials", "First crafts", "Second step", "Third step", "Fourth step", "Fifth step"], rel,
+    { edgeLit: e => (up.has(e.f) && (e.t === sel || up.has(e.t))) || ((e.f === sel || down.has(e.f)) && down.has(e.t)) });
+}
+const ECO_REL = { eats: "Eats", starving: "Eats when starving", hunts: "Hunts", carcass: "Carcasses", fertilizes: "Fertilizes", cycle: "Plant cycle", pollinates: "Pollinates", home: "Homes and shelter", rival: "Rivals" };
+const ecoOn = Object.fromEntries(Object.keys(ECO_REL).map(k => [k, k !== "home"]));
+document.getElementById("ecoChips").innerHTML = Object.entries(ECO_REL).map(([k, v]) => `<button class="chip" data-r="${k}" aria-pressed="${ecoOn[k]}"><i style="background:${ER[k][0]}"></i>${v}</button>`).join("");
+function drawEco() {
+  const edges = D.eco.filter(e => ecoOn[e.r]);
+  const ids = [...new Set(D.eco.flatMap(e => [e.f, e.t]))];
+  const food = D.eco.filter(e => ["eats", "starving", "hunts"].includes(e.r) || (e.r === "cycle" && N[e.f]?.kind === "plant" && N[e.t]?.kind === "resource"));
+  const col = {};
+  const c = id => { if (col[id] !== undefined) return col[id]; col[id] = 0; const ins = food.filter(e => e.t === id); return col[id] = ins.length ? 1 + Math.max(...ins.map(e => c(e.f))) : 0; };
+  ids.forEach(c);
+  for (const id of ids) { const k = N[id]?.kind; if ((k === "animal" || k === "predator" || id === "nest") && col[id] < 2) col[id] = 2; if (k === "predator") col[id] = Math.max(3, Math.min(col[id], 3)); if (k === "feature" && id !== "nest") col[id] = 0; }
+  col.carcass = 3; ids.filter(id => D.eco.some(e => e.f === "carcass" && e.t === id && e.r === "eats")).forEach(id => col[id] = 4);
+  const cols = layout(ids, D.eco, id => col[id], byKind);
+  const rel = ids.includes(sel) ? new Set([sel, ...edges.filter(e => e.f === sel || e.t === sel).flatMap(e => [e.f, e.t])]) : null;
+  drawGraph(document.getElementById("g-eco"), cols, edges, ["Plants and places", "Fallen fruit and seeds", "Plant eaters and prey", "Hunters", "Scavengers"], rel, { edgeLit: e => e.f === sel || e.t === sel });
+}
+
+// ---- sources
+function drawSources() {
+  const by = {};
+  for (const s of D.src) { if (s.from === "workshop") continue; const g = ((by[s.res] ||= {})[s.tool + "|" + s.act + "|" + s.file] ||= { ...s, list: [] }); g.list.push(s); }
+  const order = Object.keys(by).sort((a, b) => Object.keys(by[b]).length - Object.keys(by[a]).length || byName(a, b));
+  const row = g => {
+    const same = g.list.every(x => x.amt === g.list[0].amt);
+    const who = g.list.map(x => lk(x.from) + (same ? "" : ` <small>${esc(x.amt)}</small>`)).join(" ");
+    return `<div class="row"><span>${tl(g.tool)}</span><span>${esc(g.act)}${same && g.amt ? ` <small>· ${esc(g.amt)}</small>` : ""}<br>${who}<br><span class="file">${esc(g.file)}</span></span></div>`;
+  };
+  const crafted = r => costOf(r).length ? `<div class="row"><span>${tl("workshop")}</span><span>craft it: ${costOf(r).map(e => e.q + " " + esc(nm(e.f))).join(" + ")}</span></div>` : "";
+  document.getElementById("srcCards").innerHTML = order.map(r => `<div class="card"><h3>${hex(r)}<button class="lk" data-id="${esc(r)}">${esc(nm(r))}</button></h3>${Object.values(by[r]).map(row).join("")}${crafted(r)}</div>`).join("");
+}
+
+// ---- hand
+function drawHand() {
+  document.getElementById("handRows").innerHTML = D.hand.map(h => `<tr><td data-l="In hand">${N[h.hand] ? lk(h.hand) : tl(h.hand)}</td><td data-l="Click on">${h.targets.map(lk).join("")}</td><td data-l="Happens">${esc(h.does)}<br><span class="file">${esc(h.file)}</span></td><td data-l="Gives">${esc(h.result)}</td></tr>`).join("");
+  document.getElementById("danger").innerHTML = D.danger.map(d => `<div class="card" style="margin-bottom:10px"><h3>${hex(d.id)}${lk(d.id)}</h3><div class="row"><span class="tool">threat</span><span>${d.how === "stalk" ? "in full night, without light, it follows you from 9 cells away, stalks, charges and bites" : d.how === "shore" ? "at night, if you stand on the shore or in its lake next to it: 40% per attempt" : "attacks when bothered"}</span></div>${d.provoke ? `<div class="row"><span class="tool">provoked</span><span>approach it ${d.provoke.times} times within ${d.provoke.radius} cells in a day and it charges: “${esc(d.provoke.kills)}”</span></div>` : ""}<div class="row"><span class="tool">kept away</span><span>by light before it attacks: torch, campfire, bonfire. Once it has bitten, only a shelter, fighting back or death ends it</span></div><div class="row"><span class="tool">bites</span><span>30 of your 100 health; the fourth kills. Knife (35) or axe (50) hits back, 75%</span></div></div>`).join("");
+  const mx = D.fuel[0].days;
+  document.getElementById("fuel").innerHTML = D.fuel.map(f => `<div class="bar"><span>${lk(f.id)}</span><div style="width:${f.days / mx * 100}%"></div><span>${(f.days * 24).toFixed(1)} h</span></div>`).join("");
+  document.getElementById("captive").innerHTML = D.captive.map(c => `<div class="card"><h3>${hex(c.id)}${lk(c.id)}</h3><div>${c.diet.map(lk).join(", ")}</div></div>`).join("");
+}
+
+// ---- element card
+function li(items) { return items.length ? `<ul>${items.join("")}</ul>` : ""; }
+function sec(title, items) { return items.length ? `<h3>${title}</h3>${li(items)}` : ""; }
+function drawCard() {
+  const id = sel, n = N[id]; if (!n) return;
+  const ex = D.extra[id] || {}, T = D.tree;
+  const im = D.img?.[id], pic = !im ? hex(id) : `<span class="pic${im.map ? "" : " ui"}" style="--c:var(${kc(id)})">${im.src ? `<img src="${esc(im.src)}" alt="">` : `<span>${esc(im.emoji)}</span>`}</span>`;
+  let h = `<h2>${pic}${esc(n.name)}</h2><p class="kind">${KIND[n.kind] || n.kind}${n.sub === "tree" ? " · tree" : n.sub === "water" ? " · water" : ""}${tier[id] ? ` · step ${tier[id]} of the crafting tree` : ""}</p>`;
+  if (ex.text) h += `<p class="note" style="margin:0 0 6px">${esc(ex.text)}</p>`;
+  const cost = T.filter(e => e.t === id && e.r === "cost").map(e => `<li>${e.q} × ${lk(e.f)}</li>`);
+  const learn = T.filter(e => e.t === id && e.r === "learn").map(e => `<li>${lk(e.f)}</li>`);
+  const tools = T.filter(e => e.t === id && e.r === "tool").map(e => `<li>${lk(e.f)}</li>`);
+  h += sec("Costs", cost) + sec("Make first", learn) + sec("Carry one of", tools);
+  if (ex.fire) h += `<p class="note">Only next to a lit campfire or bonfire.</p>`;
+  if (ex.hidden) h += `<p class="note">Hidden from the build menu for now.</p>`;
+  const rt = rawTotals(id), lp = learnPath(id);
+  if (Object.keys(rt).length && cost.length) h += `<h3>All raw materials, crafts included</h3><div class="totals">${Object.entries(rt).map(([k, v]) => `<span>${v} ${esc(nm(k))}</span>`).join("")}</div>`;
+  if (lp.length > 1) h += `<h3>Whole learning path (${lp.length})</h3><p style="margin:0">${lp.sort((a, b) => tier[a] - tier[b]).map(lk).join(", ")}</p>`;
+  const usedIn = T.filter(e => e.f === id).map(e => `<li>${lk(e.t)} <small>${e.r === "cost" ? e.q + " used up" : e.r === "learn" ? "learned from it" : "carried"}</small></li>`);
+  h += sec("Opens", usedIn);
+  h += sec("How to get it", D.src.filter(s => s.res === id).map(s => `<li>${tl(s.tool)} ${s.from === "workshop" ? "craft it" : lk(s.from) + " " + esc(s.act)} <small>${esc(s.amt)}</small></li>`));
+  h += sec("What it gives you", D.src.filter(s => s.from === id).map(s => `<li>${lk(s.res)} ${tl(s.tool)} <small>${esc(s.act)}</small></li>`));
+  const rel = (r, dir, label) => sec(label, D.eco.filter(e => e.r === r && (dir === "in" ? e.t === id : e.f === id)).map(e => `<li>${lk(dir === "in" ? e.f : e.t)}${e.note ? ` <small>${esc(e.note)}</small>` : ""}</li>`));
+  h += rel("eats", "in", "Eats") + rel("starving", "in", "Eats when starving") + rel("hunts", "in", "Hunts") + rel("hunts", "out", "Hunted by") + rel("eats", "out", "Eaten by") + rel("starving", "out", "Eaten when starving by")
+    + rel("pollinates", "in", "Pollinated by") + rel("pollinates", "out", "Pollinates") + rel("home", "in", "Lives in") + rel("home", "out", "Home of") + rel("cycle", "out", "Leads to") + rel("cycle", "in", "Comes from")
+    + rel("carcass", "out", "Leaves") + rel("carcass", "in", "Carcass of") + rel("fertilizes", "out", "Fertilizes") + rel("rival", "out", "Chases off") + rel("rival", "in", "Chased off by");
+  h += sec("With it in your hand", D.hand.filter(x => x.hand === id).map(x => `<li>${esc(x.does)} → <small>${esc(x.result)}</small></li>`));
+  h += sec("When you click it", D.hand.filter(x => x.targets.includes(id)).map(x => `<li>${N[x.hand] ? lk(x.hand) : tl(x.hand)} ${esc(x.does)}</li>`));
+  const f = D.fuel.find(x => x.id === id); if (f) h += `<h3>Fuel</h3><p style="margin:0">${(f.days * 24).toFixed(1)} game hours per unit</p>`;
+  const cap = D.captive.find(x => x.id === id); if (cap) h += `<h3>Eats in a cage</h3><p style="margin:0">${cap.diet.map(lk).join(", ")}</p>`;
+  document.getElementById("card").innerHTML = h;
+}
+
+// ---- routing and events
+function render() { drawCard(); if (view === "tree") drawTree(); if (view === "eco") drawEco(); }
+function show() {
+  const v = location.hash.slice(1); view = ["tree", "sources", "eco", "hand"].includes(v) ? v : "tree";
+  for (const a of document.querySelectorAll(".tabs a")) a.toggleAttribute("aria-current", a.dataset.v === view);
+  for (const s of document.querySelectorAll(".view")) s.hidden = s.id !== "v-" + view;
+  render();
+}
+function pick(id) { if (!N[id]) return; sel = id; render(); if (innerWidth <= 980) document.getElementById("card").scrollIntoView({ behavior: "smooth", block: "start" }); }
+document.addEventListener("click", ev => {
+  const t = ev.target.closest("[data-id]"); if (t) { pick(t.dataset.id); return; }
+  const c = ev.target.closest(".chip"); if (c) { ecoOn[c.dataset.r] = !ecoOn[c.dataset.r]; c.setAttribute("aria-pressed", ecoOn[c.dataset.r]); drawEco(); }
+});
+document.addEventListener("keydown", ev => { const t = ev.target.closest?.(".n"); if (t && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); pick(t.dataset.id); } });
+document.getElementById("names").innerHTML = Object.keys(N).sort(byName).map(id => `<option value="${esc(nm(id))}"></option>`).join("");
+document.getElementById("q").addEventListener("change", ev => { const v = ev.target.value.trim().toLowerCase(); const id = Object.keys(N).find(k => nm(k).toLowerCase() === v) || Object.keys(N).find(k => nm(k).toLowerCase().includes(v)); if (id) pick(id); });
+addEventListener("hashchange", show);
+const ro = new ResizeObserver(() => { if (view === "tree") drawTree(); if (view === "eco") drawEco(); });
+ro.observe(document.querySelector("main"));
+{
+  const inEco = new Set(D.eco.flatMap(e => [e.f, e.t])), inHand = new Set(D.hand.flatMap(h => h.targets));
+  const lonely = Object.keys(N).filter(id => ["plant", "animal", "predator"].includes(N[id].kind) && !inEco.has(id));
+  document.getElementById("lonely").innerHTML = lonely.length ? `Not in any relation of the ecosystem yet: ${lonely.map(lk).join(", ")}${lonely.some(id => !inHand.has(id)) ? ". Some of them only decorate the map (" + lonely.filter(id => !inHand.has(id)).map(id => esc(nm(id))).join(", ") + ")." : "."}` : "";
+}
+drawSources(); drawHand(); show();
+}
+</script>
+</body>
+</html>
