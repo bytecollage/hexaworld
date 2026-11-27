@@ -305,14 +305,15 @@ The simulation is deterministic for a given seed, so a "fingerprint" of a run ca
 | `node tools/compare-fp.js /tmp/fp.json tools/baseline.json` | Compares a full run with its baseline. |
 | `tools/smoke.sh index.html /tmp/shot.png` | Loads the real page, saves a screenshot and prints script errors and registry warnings. |
 
-The current baselines were recorded on 2026-11-26 from `index.html` with normal maps of radius 100 (`FP_RADIUS`): quick run about 1 min, full run about 4.5 min. The first ones came from `world.old.html`; `compare-fp.js` still translates Spanish ids with `tools/words.json`.
+The current baselines were recorded on 2026-11-27 from `index.html` with normal maps of radius 100 (`FP_RADIUS`): quick run about 1.5 min, full run about 1.5 h on a Mac (the simulation has grown since the first ones). The first ones came from `world.old.html`; `compare-fp.js` still translates Spanish ids with `tools/words.json`.
 
 Notes on the tools:
 
-- They are **local dev tools** (Node + headless Chrome), not part of the game.
+- They are **dev tools** (Node + headless Chrome), not part of the game. They use Chrome at its macOS path; set `CHROME` (and `CHROME_FLAGS`) to use another one, as GitHub Actions does.
+- **On GitHub** (`.github/workflows/fingerprints.yml`): every pull request runs the quick check against `tools/baseline-quick.json` and fails on any difference (the differences are in the run's summary). By hand (Actions → Fingerprints → Run workflow) you choose quick or full, and with **update** the result is committed to that branch as the new baseline. Each run keeps its `fp-result.json` and the comparison as a downloadable artifact.
 - They run Chrome with **`--js-flags=--jitless`**. With V8's JIT, long runs drift after a few dozen game days, and the drift depends on the code's bytes (even a renamed string changes it). This points to some floating-point operation whose result depends on the compiler tier. With the interpreter only, results are exact and comparable.
 - Cases run **one at a time** in fresh pages: parallel or shared runs are not reproducible either.
-- **Behavior changes need new baselines.** After an intended change, record new ones by running the full and quick commands on the new code and copying the output over the baseline files.
+- **Behavior changes need new baselines.** After an intended change, record new ones by running the full and quick commands on the new code and copying the output over the baseline files, or run the GitHub workflow by hand with **update** on the branch.
 
 Other dev-only files in `tools/`:
 

@@ -1,0 +1,78 @@
+# Fingerprints: runs the simulation for a few fixed worlds and compares the result with the saved baseline
+# (tools/baseline-quick.json or tools/baseline.json). See ARCHITECTURE.md, "Verifying a refactor".
+#  - On every pull request: the quick check (about 2 minutes).
+#  - By hand (Actions → Fingerprints → Run workflow): quick or full (1-2 hours); with "update", the result is
+#    committed to that branch as the new baseline (after a change of behavior made on purpose).
+name: Fingerprints
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run:
+        description: "Which check: quick (about 2 min) or full (1-2 h)"
+        type: choice
+        options: [quick, full]
+        default: quick
+      update:
+        description: "Save the result as the new baseline (committed to this branch)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write                                  # only used by "update" (run by hand)
+
+concurrency:
+  group: fingerprints-${{ github.ref }}-${{ inputs.run || 'quick' }}
+  cancel-in-progress: true
+
+jobs:
+  fingerprints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      CHROME: google-chrome                        # preinstalled on GitHub's Ubuntu runners
+      CHROME_FLAGS: --no-sandbox                   # the runner's Chrome cannot use its sandbox
+      FP_QUICK: ${{ (github.event_name == 'pull_request' || inputs.run == 'quick') && '1' || '' }}
+      BASELINE: ${{ (github.event_name == 'pull_request' || inputs.run == 'quick') && 'tools/baseline-quick.json' || 'tools/baseline.json' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chrome and Node versions
+        run: $CHROME --version && node --version
+
+      - name: Run the fingerprints
+        run: tools/fp-all.sh index.html tools/fp-adapter-new.js fp-result.json
+
+      - name: Compare with the baseline
+        if: ${{ !inputs.update }}
+        run: |
+          set -o pipefail
+          node tools/compare-fp.js fp-result.json "$BASELINE" | tee compare.txt
+          {
+            echo "### Fingerprints ($([ -n "$FP_QUICK" ] && echo quick || echo full))"
+            echo '```'
+            tail -41 compare.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprints-${{ env.FP_QUICK && 'quick' || 'full' }}
+          path: |
+            fp-result.json
+            compare.txt
+          if-no-files-found: ignore
+
+      - name: Save it as the new baseline
+        if: ${{ inputs.update }}
+        run: |
+          cp fp-result.json "$BASELINE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$BASELINE"
+          git diff --cached --quiet && { echo "The baseline did not change"; exit 0; }
+          git commit -m "Update $(basename "$BASELINE") (fingerprints run on GitHub)"
+          git push
